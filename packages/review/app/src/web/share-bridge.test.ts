@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 
-import type {
-  JsonValue,
+import {
+  type JsonValue,
   ReviewDiffViewFactory,
-  ReviewInlineEditorFactory,
+  type ReviewInlineEditorFactory,
+  parseReviewAgentTraceListResponse,
 } from "@dev.fast/review-protocol";
 import { SHARE_FORMAT } from "@dev.fast/review-share-protocol";
 import { readSharedReview } from "@review/sharing/read";
@@ -101,16 +102,19 @@ const bridge = createShareBridge(review, {
 
 const base = `${bridge.config.serverUrl}/reviews-api`;
 
-const id = review.snapshot.reviewId;
+const id = `shared-${review.manifest.snapshot}`;
 
-it("serves the snapshot with target and shared", async () => {
+it("serves the snapshot under a shared- id with target and shared", async () => {
   const body = await (
     await bridge.request(
       `${base}/${id}?full=true&version=${review.snapshot.version}`,
     )
   ).json();
 
+  expect(bridge.config.reviewId).toBe(id);
   expect(body.reviewId).toBe(id);
+  expect(id).toMatch(/^shared-[a-f0-9]{64}$/);
+  expect((await bridge.request(`${base}/review-1?full=true`)).status).toBe(404);
   expect(body.target).toEqual({ kind: "commits", ...review.snapshot.pins });
   expect(body.shared).toEqual({
     login: "octocat",
@@ -181,4 +185,68 @@ it("reports that no authoring capability is available", async () => {
   expect(
     await bridge.post({ name: "authoringCapabilities", args: {} }),
   ).toEqual({ ok: true, result: { softwareMapEnabled: false } });
+});
+
+it("answers agent traces with an empty loaded list", async () => {
+  const response = await bridge.request(`${base}/${id}/agent-traces`);
+
+  expect(response.status).toBe(200);
+  expect(parseReviewAgentTraceListResponse(await response.json())).toEqual(
+    expect.objectContaining({ ok: true, configured: false, sessions: [] }),
+  );
+});
+
+it("honors the method and refuses writes", async () => {
+  expect(
+    (await bridge.request(`${base}/${id}/progress`, { method: "POST" })).status,
+  ).toBe(404);
+  expect((await bridge.request(`${base}/${id}/telemetry/event`)).status).toBe(
+    404,
+  );
+});
+
+it("answers 404 for malformed paths and undeclared objects", async () => {
+  expect((await bridge.request(`${base}/${id}/maps/%E0%A4%A`)).status).toBe(
+    404,
+  );
+
+  const broken = createShareBridge(
+    {
+      ...review,
+      object: () => {
+        throw new Error("undeclared");
+      },
+    },
+    {
+      wasmUrl: "",
+      theme: "dark",
+      inlineEditors: stubEditors,
+      diffView: stubDiffView,
+    },
+  );
+
+  expect((await broken.request(`${base}/${id}/resources/shot`)).status).toBe(
+    404,
+  );
+});
+
+it("stops following the host theme once disposed", () => {
+  const listeners = new Set<(theme: "dark" | "light") => void>();
+
+  const themed = createShareBridge(review, {
+    wasmUrl: "",
+    theme: "dark",
+    onDidChangeTheme(listener) {
+      listeners.add(listener);
+
+      return { dispose: () => listeners.delete(listener) };
+    },
+    inlineEditors: stubEditors,
+    diffView: stubDiffView,
+  });
+
+  for (const listener of listeners) listener("light");
+  expect(themed.currentTheme()).toBe("light");
+  themed.dispose();
+  expect(listeners.size).toBe(0);
 });

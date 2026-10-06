@@ -22,12 +22,18 @@ export interface ShareBridgeOptions {
 
 const diffLayoutKey = "review-web:diff-layout";
 
+/** Shared reviews are served under `shared-<id>`, like the desktop's imported shares. */
+export function sharedReviewId(review: SharedReview) {
+  return `shared-${review.manifest.snapshot}`;
+}
+
 /** The snapshot the bridge serves: adds `target` and `shared` like SharedReviewStore.get. */
 export function servedSnapshot(review: SharedReview): Snapshot {
   const { pins } = review.snapshot;
 
   return {
     ...review.snapshot,
+    reviewId: sharedReviewId(review),
     target: pins ? { kind: "commits", ...pins } : undefined,
     shared: {
       ...review.attribution,
@@ -39,15 +45,15 @@ export function servedSnapshot(review: SharedReview): Snapshot {
 export function createShareBridge(
   review: SharedReview,
   options: ShareBridgeOptions,
-): ReviewCanvasBridge {
-  const id = review.snapshot.reviewId;
+): ReviewCanvasBridge & ReviewDisposable {
+  const id = sharedReviewId(review);
   const encoder = new TextEncoder();
   let theme = options.theme;
   const themeListeners = new Set<(theme: Theme) => void>();
   const layoutListeners = new Set<(layout: ReviewDiffLayout) => void>();
   let progress: ReturnType<typeof shareProgress> | undefined;
 
-  options.onDidChangeTheme?.((next) => {
+  const themeSubscription = options.onDidChangeTheme?.((next) => {
     theme = next;
 
     for (const listener of themeListeners) listener(next);
@@ -65,8 +71,12 @@ export function createShareBridge(
       { status: 404 },
     );
 
-  const route = (path: string, query: URLSearchParams): Response => {
-    if (path === "/watch")
+  const route = (
+    method: string,
+    path: string,
+    query: URLSearchParams,
+  ): Response => {
+    if (path === "/watch" && method === "GET")
       return new Response(
         new ReadableStream({
           start(controller) {
@@ -95,14 +105,27 @@ export function createShareBridge(
 
     if (reviewId !== id) return notFound();
 
+    if (resource === "telemetry")
+      return method === "POST"
+        ? new Response(null, { status: 204 })
+        : notFound();
+
+    if (method !== "GET") return notFound();
+
     if (resource === undefined)
       return query.get("full") === "true"
         ? Response.json(servedSnapshot(review))
         : notFound();
 
-    if (resource === "telemetry") return new Response(null, { status: 204 });
-
     if (name === undefined) {
+      if (resource === "agent-traces")
+        return Response.json({
+          ok: true,
+          configured: false,
+          storage: "none",
+          sessions: [],
+        });
+
       if (resource === "progress")
         return Response.json((progress ??= shareProgress(review)));
 
@@ -143,13 +166,21 @@ export function createShareBridge(
     },
     inlineEditors: options.inlineEditors,
     diffView: options.diffView,
-    async request(url) {
+    async request(url, init) {
       const { pathname, searchParams } = new URL(url);
       const prefix = pathname.indexOf("/reviews-api");
 
-      return prefix === -1
-        ? notFound()
-        : route(pathname.slice(prefix + "/reviews-api".length), searchParams);
+      if (prefix === -1) return notFound();
+
+      try {
+        return route(
+          (init?.method ?? "GET").toUpperCase(),
+          pathname.slice(prefix + "/reviews-api".length),
+          searchParams,
+        );
+      } catch {
+        return notFound();
+      }
     },
     async post(request) {
       return request.name === "authoringCapabilities"
@@ -177,5 +208,10 @@ export function createShareBridge(
     },
     onDidChangeDiffLayout: (listener) => listen(layoutListeners, listener),
     ready() {},
+    dispose() {
+      themeSubscription?.dispose();
+      themeListeners.clear();
+      layoutListeners.clear();
+    },
   };
 }

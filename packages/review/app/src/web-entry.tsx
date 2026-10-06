@@ -1,5 +1,4 @@
 import type {
-  ReviewCanvasBridge,
   ReviewCanvasHandle,
   ReviewCanvasUi,
   ReviewDisposable,
@@ -9,7 +8,9 @@ import { readSharedReview } from "@review/sharing/read";
 
 import { mountReviewCanvas } from "./desktop-entry";
 import { createWebDiffView } from "./web/diff-view";
+import type { WebTheme } from "./web/highlight";
 import { createWebInlineEditors } from "./web/inline-editors";
+import { webCanvasUi } from "./web/menu";
 import { createShareBridge } from "./web/share-bridge";
 
 import "./styles.css";
@@ -37,23 +38,33 @@ export function mountSharedReview(
   const { ui, ...bridgeOptions } = options;
   const review = readSharedReview(bundle);
 
-  const bridge: ReviewCanvasBridge = createShareBridge(review, {
+  const theme: WebTheme = {
+    theme: () => bridge.currentTheme(),
+    onDidChangeTheme: (listener) => bridge.onDidChangeTheme(listener),
+  };
+
+  const bridge = createShareBridge(review, {
     ...bridgeOptions,
-    inlineEditors: createWebInlineEditors(review),
+    inlineEditors: createWebInlineEditors(review, theme),
     diffView: createWebDiffView(
       review,
       () => bridge.currentDiffLayout(),
       (listener) => bridge.onDidChangeDiffLayout(listener),
+      theme,
     ),
   });
 
-  return mountReviewCanvas(
+  const handle = mountReviewCanvas(
     container,
-    {
-      kind: "api",
-      reviewId: review.snapshot.reviewId,
-      bridge,
-    },
-    ui,
+    { kind: "api", reviewId: bridge.config.reviewId, bridge },
+    ui ?? webCanvasUi(),
   );
+
+  return {
+    ...handle,
+    dispose() {
+      handle.dispose();
+      bridge.dispose();
+    },
+  };
 }

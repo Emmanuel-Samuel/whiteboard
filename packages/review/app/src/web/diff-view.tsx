@@ -12,7 +12,7 @@ import { useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 
-import { currentTheme } from "./highlight";
+import type { WebTheme } from "./highlight";
 import { diffStyles as styles } from "./web-styles";
 
 type Review = Pick<SharedReview, "diff" | "text" | "snapshot">;
@@ -68,6 +68,7 @@ function entries(review: Review, files: ShareDiffFileSummary[]) {
 function DiffFiles({
   shown,
   files,
+  missing,
   options,
   tree,
   onReveal,
@@ -75,6 +76,7 @@ function DiffFiles({
 }: {
   shown: Entry[];
   files: ShareDiffFileSummary[];
+  missing: ReadonlySet<string>;
   options: FileDiffOptions<undefined, undefined>;
   tree?: HTMLElement;
   onReveal(path: string): void;
@@ -100,16 +102,28 @@ function DiffFiles({
           <ul {...stylex.props(styles.tree)}>
             {files.map((file) => (
               <li key={file.path}>
-                <button
-                  type="button"
-                  {...stylex.props(styles.treeItem)}
-                  onClick={() => onReveal(file.path)}
-                >
-                  <span {...stylex.props(styles.treePath)}>{file.path}</span>
-                  <span {...stylex.props(styles.treeCounts)}>
-                    +{file.additions} −{file.deletions}
-                  </span>
-                </button>
+                {missing.has(file.path) ? (
+                  <div
+                    {...stylex.props(styles.treeItem, styles.treeMissing)}
+                    data-missing-file=""
+                  >
+                    <span {...stylex.props(styles.treePath)}>{file.path}</span>
+                    <span {...stylex.props(styles.treeCounts)}>
+                      Not included in this share
+                    </span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    {...stylex.props(styles.treeItem)}
+                    onClick={() => onReveal(file.path)}
+                  >
+                    <span {...stylex.props(styles.treePath)}>{file.path}</span>
+                    <span {...stylex.props(styles.treeCounts)}>
+                      +{file.additions} −{file.deletions}
+                    </span>
+                  </button>
+                )}
               </li>
             ))}
           </ul>,
@@ -125,6 +139,7 @@ export function createWebDiffView(
   onDidChangeLayout: (
     listener: (layout: ReviewDiffLayout) => void,
   ) => ReviewDisposable,
+  theme: WebTheme,
 ): ReviewDiffViewFactory {
   return {
     files: async () => review.diff(),
@@ -142,6 +157,8 @@ export function createWebDiffView(
       const root = createRoot(scroller);
       const files = review.diff();
       const { shown, missing } = entries(review, files);
+      const missingPaths = new Set(missing);
+      let diffLayout = layout();
       let rendered = false;
       let pending: string | undefined;
       let disposed = false;
@@ -161,16 +178,17 @@ export function createWebDiffView(
         section(path)?.scrollIntoView({ block: "start" });
       };
 
-      const render = (diffLayout: ReviewDiffLayout) =>
+      const render = () =>
         root.render(
           <DiffFiles
             shown={shown}
             files={files}
+            missing={missingPaths}
             tree={spec.fileTreeContainer}
             options={{
               diffStyle: diffLayout === "split" ? "split" : "unified",
               theme: { dark: "pierre-dark", light: "pierre-light" },
-              themeType: currentTheme(),
+              themeType: theme.theme(),
             }}
             onReveal={revealFile}
             onRendered={onRendered}
@@ -184,10 +202,16 @@ export function createWebDiffView(
         pending = undefined;
       };
 
-      render(layout());
+      render();
 
-      const subscription = onDidChangeLayout(render);
-      disposables.push(() => subscription.dispose());
+      for (const subscription of [
+        onDidChangeLayout((next) => {
+          diffLayout = next;
+          render();
+        }),
+        theme.onDidChangeTheme(render),
+      ])
+        disposables.push(() => subscription.dispose());
 
       if (missing.length) {
         const timer = setTimeout(() => {

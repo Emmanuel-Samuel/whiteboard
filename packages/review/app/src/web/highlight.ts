@@ -1,4 +1,12 @@
+import type { ReviewDisposable } from "@dev.fast/review-protocol";
 import { type ThemedToken, getSharedHighlighter } from "@pierre/diffs";
+
+export type WebThemeName = "dark" | "light";
+
+export interface WebTheme {
+  theme(): WebThemeName;
+  onDidChangeTheme(listener: (theme: WebThemeName) => void): ReviewDisposable;
+}
 
 const languages = new Map(
   Object.entries({
@@ -37,22 +45,17 @@ function languageFor(path: string): string | undefined {
   return extension && languages.get(extension.toLowerCase());
 }
 
-export function currentTheme(): "light" | "dark" {
-  return document.documentElement.dataset.reviewTheme === "light"
-    ? "light"
-    : "dark";
-}
-
 export function highlight(
   path: string,
   commit: string,
   text: string,
+  themeName: WebThemeName,
 ): Promise<ThemedToken[][] | undefined> {
   const lang = languageFor(path);
 
   if (!lang) return Promise.resolve(undefined);
 
-  const theme = currentTheme() === "light" ? "pierre-light" : "pierre-dark";
+  const theme = themeName === "light" ? "pierre-light" : "pierre-dark";
 
   const key = `${theme}\0${commit}\0${path}`;
   let tokens = cache.get(key);

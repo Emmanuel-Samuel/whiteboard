@@ -10,6 +10,7 @@ import { afterEach, expect, it } from "vitest";
 
 import { createWebDiffView } from "./diff-view";
 import { shadowText } from "./test-shadow-text";
+import { testTheme } from "./test-theme";
 
 const B = "b".repeat(40);
 
@@ -87,6 +88,7 @@ it("lists files", async () => {
     review([modified]),
     () => "unified",
     noLayoutChanges,
+    testTheme().theme,
   );
 
   expect(await view.files()).toEqual([modified]);
@@ -99,6 +101,7 @@ it("renders the diff of each file from both texts", async () => {
     review([modified]),
     () => "unified",
     noLayoutChanges,
+    testTheme().theme,
   );
 
   const { container, tree, view } = mount(({ container, tree }) =>
@@ -130,6 +133,7 @@ it("reports a file with no text on either side through onDidError once", async (
     review([modified], () => undefined),
     () => "split",
     noLayoutChanges,
+    testTheme().theme,
   );
 
   const { view } = mount(({ container }) => factory.create({ container }));
@@ -158,6 +162,7 @@ it("shows a binary file as one row", async () => {
     ),
     () => "unified",
     noLayoutChanges,
+    testTheme().theme,
   );
 
   const { container, view } = mount(({ container }) =>
@@ -176,6 +181,7 @@ it("does not throw revealing a file that is not in the diff", () => {
     review([modified]),
     () => "unified",
     noLayoutChanges,
+    testTheme().theme,
   );
 
   const { view } = mount(({ container }) => factory.create({ container }));
@@ -204,6 +210,7 @@ it("re-renders with the new style when the layout changes", async () => {
 
       return { dispose: () => listeners.delete(listener) };
     },
+    testTheme().theme,
   );
 
   const { container, view } = mount(({ container }) =>
@@ -222,4 +229,69 @@ it("re-renders with the new style when the layout changes", async () => {
 
   view.dispose();
   expect(listeners.size).toBe(0);
+});
+
+function colorSchemes(container: HTMLElement) {
+  return [
+    ...container.querySelectorAll<HTMLElement>("[data-diff-file] *"),
+  ].flatMap((element) =>
+    element.shadowRoot ? [getComputedStyle(element).colorScheme] : [],
+  );
+}
+
+it("follows theme changes", async () => {
+  const themed = testTheme("dark");
+
+  const factory = createWebDiffView(
+    review([modified]),
+    () => "split",
+    noLayoutChanges,
+    themed.theme,
+  );
+
+  const { container, view } = mount(({ container }) =>
+    factory.create({ container }),
+  );
+
+  expect(await settled(() => colorSchemes(container).includes("dark"))).toBe(
+    true,
+  );
+
+  act(() => themed.set("light"));
+
+  expect(await settled(() => colorSchemes(container).join() === "light")).toBe(
+    true,
+  );
+
+  view.dispose();
+  expect(themed.listeners.size).toBe(0);
+});
+
+it("lists files missing from the share as rows, not links", async () => {
+  const factory = createWebDiffView(
+    review([modified, { ...modified, path: "src/gone.ts" }], (path, commit) =>
+      path === "src/a.ts"
+        ? commit === B
+          ? "const kept = 1;\n"
+          : "const kept = 1;\nconst added = 2;\n"
+        : undefined,
+    ),
+    () => "unified",
+    noLayoutChanges,
+    testTheme().theme,
+  );
+
+  const { tree } = mount(({ container, tree }) =>
+    factory.create({ container, fileTreeContainer: tree }),
+  );
+
+  await settled(() => tree.textContent?.includes("src/gone.ts"));
+  const missing = tree.querySelector("[data-missing-file]");
+
+  expect(missing?.textContent).toContain("src/gone.ts");
+  expect(missing?.textContent).toContain("Not included in this share");
+  expect(missing?.closest("button")).toBeNull();
+  expect(
+    [...tree.querySelectorAll("button")].map((button) => button.textContent),
+  ).toEqual([expect.stringContaining("src/a.ts")]);
 });

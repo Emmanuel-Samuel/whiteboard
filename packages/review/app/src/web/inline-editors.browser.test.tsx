@@ -7,6 +7,7 @@ import type { SharedSnapshot } from "@review/sharing/schemas";
 import { afterEach, expect, it } from "vitest";
 
 import { createWebInlineEditors } from "./inline-editors";
+import { testTheme } from "./test-theme";
 
 const B = "b".repeat(40);
 
@@ -25,14 +26,17 @@ const snapshot: SharedSnapshot = {
   createdAt: "2026-10-06T00:00:00.000Z",
 };
 
-const editors = createWebInlineEditors({
-  snapshot,
-  text: (path, commit) =>
-    (commit === H && path === "src/a.ts") ||
-    (commit === OTHER && path === "src/b.ts")
-      ? TEXT
-      : undefined,
-});
+const editors = createWebInlineEditors(
+  {
+    snapshot,
+    text: (path, commit) =>
+      (commit === H && path === "src/a.ts") ||
+      (commit === OTHER && path === "src/b.ts")
+        ? TEXT
+        : undefined,
+  },
+  testTheme().theme,
+);
 
 const query: ReviewFindQuery = {
   text: "line",
@@ -164,11 +168,14 @@ it("find() without an editor counts matches", async () => {
 });
 
 function sided(base: string) {
-  return createWebInlineEditors({
-    snapshot,
-    text: (path, commit) =>
-      path === "src/a.ts" ? (commit === B ? base : TEXT) : undefined,
-  });
+  return createWebInlineEditors(
+    {
+      snapshot,
+      text: (path, commit) =>
+        path === "src/a.ts" ? (commit === B ? base : TEXT) : undefined,
+    },
+    testTheme().theme,
+  );
 }
 
 function blocks(container: HTMLElement) {
@@ -216,4 +223,40 @@ it("shows lines that read the same on both sides once", async () => {
   expect(container.querySelectorAll("[data-line='3']")).toHaveLength(1);
   expect(container.querySelector("[data-side-label]")).toBeNull();
   handle.dispose();
+});
+
+it("shows identical ranges on the same side each time", async () => {
+  const { container, ...rest } = spec({
+    ranges: [
+      { startLine: 2, endLine: 3 },
+      { startLine: 2, endLine: 3 },
+    ],
+  });
+
+  const handle = editors.create({ container, ...rest });
+
+  await settled(() => container.querySelector("[data-line='3']"));
+  expect(container.querySelectorAll("[data-range]")).toHaveLength(2);
+  handle.dispose();
+});
+
+it("re-highlights when the theme changes", async () => {
+  const themed = testTheme("dark");
+  const { container, ...rest } = spec();
+
+  const handle = createWebInlineEditors(
+    { snapshot, text: () => "const answer = 1;\n" },
+    themed.theme,
+  ).create({ container, ...rest, ranges: [{ startLine: 1, endLine: 1 }] });
+
+  const colors = () =>
+    [...container.querySelectorAll<HTMLElement>("[data-line] span[style]")]
+      .map((span) => span.style.color)
+      .join();
+
+  const dark = await settled(() => colors());
+  themed.set("light");
+  expect(await settled(() => colors() !== dark && colors())).toBeTruthy();
+  handle.dispose();
+  expect(themed.listeners.size).toBe(0);
 });

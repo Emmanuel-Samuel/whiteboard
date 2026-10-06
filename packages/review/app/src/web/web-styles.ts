@@ -1,4 +1,4 @@
-import { fontSize, radius } from "@canvas/scale.stylex";
+import { elevation, fontSize, radius } from "@canvas/scale.stylex";
 import { tokens } from "@canvas/tokens.stylex";
 import * as stylex from "@stylexjs/stylex";
 
@@ -108,6 +108,11 @@ export const diffStyles = stylex.create({
     cursor: "pointer",
     backgroundColor: { default: "transparent", ":hover": tokens.surface },
   },
+  treeMissing: {
+    color: tokens.inkFaint,
+    cursor: "default",
+    backgroundColor: "transparent",
+  },
   treePath: {
     flex: 1,
     minWidth: 0,
@@ -118,5 +123,48 @@ export const diffStyles = stylex.create({
   treeCounts: {
     flexShrink: 0,
     color: tokens.inkFaint,
+  },
+});
+
+export const menuStyles = stylex.create({
+  menu: {
+    position: "fixed",
+    inset: "auto",
+    display: "flex",
+    flexDirection: "column",
+    minWidth: "160px",
+    margin: 0,
+    padding: "4px",
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: tokens.chromeBorder,
+    borderRadius: radius.surface,
+    backgroundColor: tokens.surfaceRaised,
+    color: tokens.chromeFg,
+    boxShadow: elevation.popover,
+    fontFamily: tokens.chromeFont,
+    fontSize: tokens.chromeFontSize,
+  },
+  item: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    borderWidth: 0,
+    borderRadius: radius.small,
+    paddingBlock: "4px",
+    paddingInline: "8px",
+    font: "inherit",
+    textAlign: "left",
+    color: { default: "inherit", ":disabled": tokens.inkFaint },
+    cursor: { default: "pointer", ":disabled": "default" },
+    backgroundColor: {
+      default: "transparent",
+      ":hover:enabled": tokens.chromeHoverBg,
+      ":focus-visible": tokens.chromeHoverBg,
+    },
+    outline: "none",
+  },
+  check: {
+    width: "1em",
   },
 });

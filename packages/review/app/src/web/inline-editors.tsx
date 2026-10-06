@@ -9,7 +9,7 @@ import type { ThemedToken } from "@pierre/diffs";
 import type { SharedReview } from "@review/sharing/read";
 import * as stylex from "@stylexjs/stylex";
 
-import { highlight } from "./highlight";
+import { type WebTheme, highlight } from "./highlight";
 import { peekStyles as styles } from "./web-styles";
 
 type Review = Pick<SharedReview, "text" | "snapshot">;
@@ -57,13 +57,13 @@ function source(
     : { commit, text, lines: text.replace(/\r?\n$/, "").split(/\r?\n/) };
 }
 
-/** Each range read at its own side; a range reading the same as one before it is shown once. */
+/** Each range read at its own side; a range reading the same as one on the other side is shown once. */
 function rangeBlocks(
   review: Review,
   spec: Pick<ReviewInlineFindSpec, "path" | "side" | "pins" | "ranges">,
 ) {
   const blocks: Block[] = [];
-  const shown = new Set<string>();
+  const shown = new Map<string, ReviewDiffSide>();
 
   for (const range of spec.ranges) {
     const side = range.side ?? spec.side;
@@ -81,8 +81,10 @@ function rangeBlocks(
 
     const key = JSON.stringify(numbers.map((n) => text.lines[n - 1]));
 
-    if (shown.has(key)) continue;
-    shown.add(key);
+    const seen = shown.get(key);
+
+    if (seen && seen !== side) continue;
+    shown.set(key, side);
     blocks.push({ side, source: text, numbers });
   }
 
@@ -214,6 +216,7 @@ function code(
 
 export function createWebInlineEditors(
   review: Review,
+  theme: WebTheme,
 ): ReviewInlineEditorFactory {
   return {
     async find(spec, query) {
@@ -295,16 +298,28 @@ export function createWebInlineEditors(
 
       observer.observe(peek);
 
-      for (const { source: text } of new Map(
-        blocks.map((block) => [block.source.commit, block]),
-      ).values())
-        void highlight(spec.path, text.commit, text.text).then(
-          (highlighted) => {
-            if (disposed || !highlighted) return;
-            tokens.set(text.commit, highlighted);
-            render();
-          },
-        );
+      const sources = [
+        ...new Map(
+          blocks.map((block) => [block.source.commit, block.source]),
+        ).values(),
+      ];
+
+      const highlightAll = () => {
+        const name = theme.theme();
+
+        for (const text of sources)
+          void highlight(spec.path, text.commit, text.text, name).then(
+            (highlighted) => {
+              if (disposed || !highlighted || theme.theme() !== name) return;
+              tokens.set(text.commit, highlighted);
+              render();
+            },
+          );
+      };
+
+      highlightAll();
+
+      const themeSubscription = theme.onDidChangeTheme(highlightAll);
 
       return {
         get height() {
@@ -356,6 +371,7 @@ export function createWebInlineEditors(
         },
         dispose() {
           disposed = true;
+          themeSubscription.dispose();
           observer.disconnect();
           listeners.clear();
           peek.remove();
