@@ -9,6 +9,10 @@ import type { Snapshot } from "@review/review-api/store";
 import { act } from "react";
 
 import { testReviewBridge } from "./review-session-test-utils";
+import {
+  placeholderDiffView,
+  placeholderInlineEditors,
+} from "./web/placeholders";
 
 /** The subset of the review API a pinned-version canvas reads while mounting. */
 export interface FixtureReviewApi {
@@ -95,40 +99,8 @@ export function fixtureReviewBridge(api: FixtureReviewApi): ReviewCanvasBridge {
     {
       request,
       // A code peek asks the host for an inline editor; a placeholder proves it did.
-      inlineEditors: {
-        async find() {
-          return { matchCount: 0 };
-        },
-        create: (spec) => {
-          const editor = document.createElement("div");
-          editor.className = "fixture-inline-editor";
-          editor.dataset.path = spec.path;
-          spec.container.appendChild(editor);
-
-          return {
-            height: 180,
-            setActive() {},
-            setCollapsed() {},
-            async setFindQuery() {
-              return { matchCount: 0 };
-            },
-            revealFindMatch() {},
-            clearActiveFindMatch() {},
-            clearFind() {},
-            onDidChangeHeight: () => ({ dispose() {} }),
-            onDidError: () => ({ dispose() {} }),
-            dispose: () => {
-              editor.remove();
-            },
-          };
-        },
-      },
-      diffView: {
-        files: async () => api.files ?? [],
-        create: () => {
-          throw new Error("Diff is not mounted by this test.");
-        },
-      },
+      inlineEditors: placeholderInlineEditors(),
+      diffView: { ...placeholderDiffView(), files: async () => api.files ?? [] },
     },
   );
 }

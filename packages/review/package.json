@@ -33,14 +33,19 @@
     "./sharing": {
       "types": "./dist/sharing/index.d.ts",
       "import": "./dist/sharing/index.js"
-    }
+    },
+    "./canvas": {
+      "types": "./dist/canvas/canvas.d.ts",
+      "import": "./dist/canvas/canvas.js"
+    },
+    "./canvas/*": "./dist/canvas/*"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "prebuild": "pnpm run build:workspace-deps",
-    "build": "node --max-old-space-size=8192 node_modules/tsdown/dist/run.mjs",
+    "build": "node --max-old-space-size=8192 node_modules/tsdown/dist/run.mjs && pnpm --filter @dev.fast/review-canvas build:web",
     "build:workspace-deps": "pnpm --filter @dev.fast/diffr --filter @dev.fast/json --filter @dev.fast/local-vcs --filter @dev.fast/review-protocol --filter @dev.fast/review-share-protocol --filter @dev.fast/trace-protocol --filter @dev.fast/trace-core build",
     "prepack": "pnpm run build",
     "start": "tsx src/cli.ts",
