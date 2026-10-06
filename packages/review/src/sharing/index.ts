@@ -13,6 +13,8 @@ export {
   validateShareBundle,
 } from "./import.js";
 
+export { readSharedReview, type SharedReview } from "./read.js";
+
 export { verifyShareRepository } from "./repository.js";
 
 export {

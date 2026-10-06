@@ -6,7 +6,6 @@ import {
   type ReviewTabDwellTracker,
   type ReviewTelemetryTab,
   createReviewTabDwellTracker,
-  createReviewTabTelemetryTransport,
 } from "./tab-dwell-telemetry";
 import { captureAppOpened } from "./ui-telemetry";
 
@@ -27,12 +26,15 @@ export function useReviewTabTelemetry(activeView: ReviewView): void {
 
   const send = useEffectEvent<
     Parameters<typeof createReviewTabDwellTracker>[0]["send"]
-  >((payload, options) => {
-    createReviewTabTelemetryTransport({
-      endpoint: session.beaconUrl("/telemetry/tab"),
-      navigator: window.navigator,
-      fetch: window.fetch.bind(window),
-    })(payload, options);
+  >((payload) => {
+    session.bridge
+      .request(session.beaconUrl("/telemetry/tab"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      })
+      .catch(() => undefined);
   });
 
   useEffect(() => {

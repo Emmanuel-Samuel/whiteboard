@@ -13,11 +13,7 @@ import {
 import path from "node:path";
 
 import { parseJsonText } from "@dev.fast/json";
-import {
-  type JsonObject,
-  type JsonValue,
-  isJsonObject,
-} from "@dev.fast/review-protocol";
+import { isJsonObject } from "@dev.fast/review-protocol";
 import {
   MAX_SHARE_MANIFEST_BYTES,
   type ShareManifest,
@@ -35,11 +31,7 @@ import {
 import type { LocalReviewData } from "@review/review-api/local-data.js";
 import type { ReviewStore } from "@review/review-api/store.js";
 import { traceSchema } from "@review/review-api/trace-schema.js";
-import {
-  liftFileLenses,
-  migrateStoredDocument,
-  migrateStoredLenses,
-} from "@review/stored-document-migration.js";
+import { migrateStoredDocument } from "@review/stored-document-migration.js";
 import { z } from "zod";
 
 import {
@@ -47,6 +39,7 @@ import {
   digestBytes,
   validateShareSources,
 } from "./export.js";
+import { liftSharedLenses } from "./read.js";
 import {
   fetchPinnedRepository,
   repositoryReady,
@@ -149,21 +142,6 @@ export function validateShareBundle(bundle: ShareBundle) {
   }
 
   return { manifest, snapshot, presentation };
-}
-
-function liftSharedLenses(stored: JsonObject, migrated: JsonValue): JsonObject {
-  const { document, lenses } = liftFileLenses(migrated);
-
-  // SAFETY: migration returns the array it was given, rewritten.
-  const kept = Array.isArray(stored.lenses)
-    ? (migrateStoredLenses(stored.lenses) as JsonValue[])
-    : [];
-
-  return {
-    ...stored,
-    document,
-    ...((kept.length || lenses.length) && { lenses: [...kept, ...lenses] }),
-  };
 }
 
 export function sharedReviewId(origin: string, shareId: string) {

@@ -30,7 +30,6 @@ it("keeps dwell continuous through live review updates and sends the latest vers
   let now = 0;
   vi.spyOn(performance, "now").mockImplementation(() => now);
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
-  const beacon = vi.spyOn(navigator, "sendBeacon").mockReturnValue(true);
 
   const request = vi.fn<ReviewSession["bridge"]["request"]>(async () =>
     Response.json({ ok: true }),
@@ -75,15 +74,18 @@ it("keeps dwell continuous through live review updates and sends the latest vers
     beaconUrl: () => "http://localhost/telemetry?version=2",
   });
 
-  expect(beacon).not.toHaveBeenCalled();
+  const sent = () =>
+    request.mock.calls.filter(([url]) => url.startsWith("http://localhost/"));
+
+  expect(sent()).toEqual([]);
   now = 2500;
   act(() => window.dispatchEvent(new Event("pagehide")));
 
-  expect(beacon).toHaveBeenCalledTimes(1);
-  expect(beacon.mock.calls[0]?.[0]).toBe(
-    "http://localhost/telemetry?version=2",
-  );
-  expect(JSON.parse(String(beacon.mock.calls[0]?.[1]))).toEqual({
+  expect(sent()).toHaveLength(1);
+  const [url, init] = sent()[0]!;
+  expect(url).toBe("http://localhost/telemetry?version=2");
+  expect(init).toMatchObject({ method: "POST", keepalive: true });
+  expect(JSON.parse(String(init?.body))).toEqual({
     tab: "review",
     duration_ms: 2500,
     reason: "pagehide",
