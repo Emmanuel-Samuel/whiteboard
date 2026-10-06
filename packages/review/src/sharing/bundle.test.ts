@@ -9,7 +9,7 @@ import { createShareFixture } from "../../test/fixtures/share/create.js";
 import { digestBytes, exportShare } from "./export.js";
 import { validateShareBundle } from "./import.js";
 
-it("retains the document, images, maps and complete conversations without copying repository files or diff lists", async () => {
+it("retains the document, images, maps, complete conversations and pinned sources", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "sharing-bundle-"));
   const fixture = await createShareFixture(root);
 
@@ -21,10 +21,15 @@ it("retains the document, images, maps and complete conversations without copyin
     );
     expect(bundle.manifest.repository).toEqual(fixture.repository);
 
+    const sources = parsed.presentation.sources!;
+
     const declared = new Set([
       bundle.manifest.snapshot,
       bundle.manifest.presentation,
       ...bundle.manifest.resources.map((resource) => resource.object),
+      sources.diff,
+      sources.commits,
+      ...sources.files.map((file) => file.object),
     ]);
 
     expect([...bundle.objects.keys()].sort()).toEqual([...declared].sort());
@@ -41,9 +46,6 @@ it("retains the document, images, maps and complete conversations without copyin
         .events,
     ).toHaveLength(2);
     expect(Object.keys(parsed.presentation.maps)).toHaveLength(1);
-    expect(parsed.presentation).not.toHaveProperty("diffs");
-    expect(parsed.presentation).not.toHaveProperty("commits");
-    expect(bundle.manifest).not.toHaveProperty("files");
     const corrupt = { ...bundle, objects: new Map(bundle.objects) };
     corrupt.objects.set(bundle.manifest.snapshot, Buffer.from("tampered"));
     expect(() => validateShareBundle(corrupt)).toThrow("corrupt");

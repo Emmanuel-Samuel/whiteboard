@@ -6,15 +6,22 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import { type JsonObject, isJsonObject } from "@dev.fast/review-protocol";
+import { MAX_SHARE_OBJECT_BYTES } from "@dev.fast/review-share-protocol";
 import { rangeAnchor } from "@review/lens-selection";
 import { ReviewInputError } from "@review/review-api/document.js";
 import { createReviewApi } from "@review/review-api/http.js";
 import { openLocalReviewStore } from "@review/review-api/local-data.js";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { type ShareBundle, digestBytes, exportShare } from "./export.js";
+import {
+  type ShareBundle,
+  type ShareExportData,
+  digestBytes,
+  exportShare,
+} from "./export.js";
 import { SharedReviewStore, validateShareBundle } from "./import.js";
 import { fetchPinnedRepository } from "./repository.js";
+import { sharePresentationSchema } from "./schemas.js";
 
 const cleanup: Array<() => Promise<void>> = [];
 
@@ -672,4 +679,155 @@ it("lists and streams shared diff counts with the same persistence as local revi
   } finally {
     await reader.cancel();
   }
+});
+
+const text = (bundle: ShareBundle, id: string) =>
+  Buffer.from(bundle.objects.get(id)!).toString();
+
+const sharedSources = (bundle: ShareBundle) =>
+  sharePresentationSchema.parse(
+    JSON.parse(text(bundle, bundle.manifest.presentation)),
+  ).sources;
+
+function exportData(
+  data: ShareExportData,
+  overrides: Partial<ShareExportData> = {},
+): ShareExportData {
+  return {
+    map: data.map.bind(data),
+    validateResource: data.validateResource.bind(data),
+    validateSource: data.validateSource.bind(data),
+    changes: data.changes.bind(data),
+    commits: data.commits.bind(data),
+    file: data.file.bind(data),
+    ...overrides,
+  } as ShareExportData;
+}
+
+it("embeds diff summaries, commits and file texts at both pins", async () => {
+  const { local, reviewId } = await fixture();
+  const pins = local.store.read(reviewId).pins!;
+  const bundle = await exportShare({ ...local, reviewId, repository });
+  const sources = sharedSources(bundle)!;
+
+  expect(JSON.parse(text(bundle, sources.diff))).toEqual(
+    await local.data.changes(pins),
+  );
+  expect(JSON.parse(text(bundle, sources.commits))).toEqual(
+    await local.data.commits(pins),
+  );
+
+  const byKey = Object.fromEntries(
+    sources.files.map((file) => [
+      `${file.commit}:${file.path}`,
+      text(bundle, file.object),
+    ]),
+  );
+
+  expect(byKey).toEqual({
+    [`${pins.base}:main.ts`]: "export const answer = 1;\n",
+    [`${pins.head}:main.ts`]: "export const answer = 2;\n",
+    [`${pins.head}:new.ts`]: "export const added = true;\n",
+    [`${pins.base}:old.ts`]: "export const moved = true;\n",
+    [`${pins.head}:renamed.ts`]: "export const moved = true;\n",
+    [`${pins.base}:deleted.ts`]: "export const obsolete = true;\n",
+  });
+
+  const objects = new Set(bundle.manifest.objects.map((object) => object.id));
+
+  for (const file of sources.files) expect(objects.has(file.object)).toBe(true);
+
+  const moved = sources.files.filter((file) =>
+    ["old.ts", "renamed.ts"].includes(file.path),
+  );
+
+  expect(moved).toHaveLength(2);
+  expect(moved[0]!.object).toBe(moved[1]!.object);
+  expect(validateShareBundle(bundle).snapshot.pins).toEqual(pins);
+});
+
+it("embeds the file behind an anchor with its own pins", async () => {
+  const { local, reviewId } = await fixture();
+  const pins = local.store.read(reviewId).pins!;
+  await local.store.execute({
+    operation: {
+      type: "edit",
+      reviewId,
+      edit: {
+        type: "insert",
+        content: {
+          type: "code_peek",
+          source: rangeAnchor({
+            side: "head",
+            file: "old.ts",
+            fromLine: 1,
+            toLine: 1,
+          }),
+          pins: { repositoryId: pins.repositoryId, head: pins.base },
+        },
+      },
+    },
+  });
+
+  const bundle = await exportShare({ ...local, reviewId, repository });
+  const files = sharedSources(bundle)!.files;
+
+  expect(
+    files.filter((file) => file.path === "old.ts" && file.commit === pins.base),
+  ).toHaveLength(1);
+});
+
+it("skips binary and oversize files", async () => {
+  const { local, reviewId } = await fixture();
+
+  const bundle = await exportShare({
+    ...local,
+    data: exportData(local.data, {
+      changes: (async (pins: Parameters<ShareExportData["changes"]>[0]) => [
+        ...(await local.data.changes(pins)),
+        {
+          path: "image.png",
+          status: "added",
+          additions: 0,
+          deletions: 0,
+          binary: true,
+        },
+      ]) as ShareExportData["changes"],
+      file: (async (...args: Parameters<ShareExportData["file"]>) => {
+        const file = await local.data.file(...args);
+
+        return args[2] === "new.ts"
+          ? { ...file, text: "x".repeat(MAX_SHARE_OBJECT_BYTES + 1) }
+          : file;
+      }) as ShareExportData["file"],
+    }),
+    reviewId,
+    repository,
+  });
+
+  const paths = sharedSources(bundle)!.files.map((file) => file.path);
+
+  expect(paths).toContain("main.ts");
+  expect(paths).not.toContain("new.ts");
+  expect(paths).not.toContain("image.png");
+});
+
+it("omits sources for a review without pins", async () => {
+  const { local } = await fixture();
+
+  const { reviewId } = await local.store.execute({
+    operation: { type: "create", kind: "scratchpad", title: "Notes only" },
+  });
+
+  await local.store.execute({
+    operation: {
+      type: "edit",
+      reviewId,
+      edit: { type: "insert", content: { type: "markdown", markdown: "Hi" } },
+    },
+  });
+
+  expect(sharedSources(await exportShare({ ...local, reviewId }))).toBe(
+    undefined,
+  );
 });

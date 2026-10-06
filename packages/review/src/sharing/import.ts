@@ -25,12 +25,9 @@ import {
   shareManifestSchema,
 } from "@dev.fast/review-share-protocol";
 import { textIncludesQuote } from "@review/evidence.js";
-import { lensSchema } from "@review/review-api/diff-lenses.js";
 import { ReviewInputError } from "@review/review-api/document.js";
 import {
   checkReferences,
-  documentSchema,
-  pinsSchema,
   resourceReference,
   resourceReferences,
   sourceReferences,
@@ -38,10 +35,6 @@ import {
 import type { LocalReviewData } from "@review/review-api/local-data.js";
 import type { ReviewStore } from "@review/review-api/store.js";
 import { traceSchema } from "@review/review-api/trace-schema.js";
-import {
-  normalizedSoftwareElementSchema,
-  normalizedSoftwareRelationshipSchema,
-} from "@review/software-map-model.js";
 import {
   liftFileLenses,
   migrateStoredDocument,
@@ -59,70 +52,7 @@ import {
   repositoryReady,
   sharedGit,
 } from "./repository.js";
-
-export const sharedSnapshotSchema = z.strictObject({
-  reviewId: z.string().min(1),
-  version: z.number().int().nonnegative(),
-  title: z.string().min(1),
-  pins: pinsSchema
-    .extend({
-      base: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
-      head: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
-    })
-    .optional(),
-  document: documentSchema,
-  lenses: z.array(lensSchema).optional(),
-  createdAt: z.string(),
-  origin: z
-    .strictObject({
-      branch: z.string().optional(),
-      baseRef: z.string().optional(),
-      pullRequestNumber: z.number().int().positive().optional(),
-      pullRequestUrl: z.string().optional(),
-      pullRequestTitle: z.string().optional(),
-      revision: z.string().optional(),
-    })
-    .optional(),
-});
-
-const count = z.number().int().nonnegative();
-
-const counts = z.strictObject({ additions: count, deletions: count });
-
-const mapSchema = z.strictObject({
-  commit: z.string(),
-  side: z.enum(["base", "head"]),
-  elements: z.array(normalizedSoftwareElementSchema),
-  relationships: z.array(normalizedSoftwareRelationshipSchema),
-  countsByElementPath: z.record(z.string(), counts),
-  unmappedByElementPath: z.record(
-    z.string(),
-    counts.extend({
-      files: z.array(
-        counts.extend({
-          file: z.string(),
-          hunks: z.array(
-            z.strictObject({
-              startLine: count,
-              lines: z.array(
-                z.strictObject({
-                  kind: z.enum(["add", "remove"]),
-                  oldLine: count.nullable(),
-                  newLine: count.nullable(),
-                  text: z.string(),
-                }),
-              ),
-            }),
-          ),
-        }),
-      ),
-    }),
-  ),
-});
-
-export const sharePresentationSchema = z.strictObject({
-  maps: z.record(z.string(), mapSchema),
-});
+import { sharePresentationSchema, sharedSnapshotSchema } from "./schemas.js";
 
 export function validateShareBundle(bundle: ShareBundle) {
   const manifest = shareManifestSchema.parse(bundle.manifest);

@@ -14,3 +14,14 @@ export {
 } from "./import.js";
 
 export { verifyShareRepository } from "./repository.js";
+
+export {
+  commitSchema,
+  mapSchema,
+  type SharePresentation,
+  type SharedSnapshot,
+  type ShareSources,
+  sharePresentationSchema,
+  shareSourcesSchema,
+  sharedSnapshotSchema,
+} from "./schemas.js";

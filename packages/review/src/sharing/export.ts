@@ -7,12 +7,14 @@ import {
   SHARE_FORMAT,
   type ShareManifest,
   shareManifestSchema,
+  sharePathSchema,
 } from "@dev.fast/review-share-protocol";
 import { sourceAnchors } from "@review/lens-selection.js";
 import { markdownNodes, parseMarkdown } from "@review/markdown.js";
 import { lensSelections } from "@review/review-api/diff-lenses.js";
 import { ReviewInputError } from "@review/review-api/document.js";
 import {
+  type Pins,
   anchorPins,
   checkReferences,
   documentSchema,
@@ -26,6 +28,8 @@ import type { LocalReviewData } from "@review/review-api/local-data.js";
 import type { ReviewStore, Snapshot } from "@review/review-api/store.js";
 import { z } from "zod";
 
+import type { ShareSources } from "./schemas.js";
+
 export interface ShareBundle {
   manifest: ShareManifest;
   objects: Map<string, Uint8Array>;
@@ -36,7 +40,7 @@ export type ShareExportStore = Pick<ReviewStore, "read" | "resource">;
 
 export type ShareExportData = Pick<
   LocalReviewData,
-  "map" | "validateResource" | "validateSource"
+  "map" | "validateResource" | "validateSource" | "changes" | "commits" | "file"
 >;
 
 export function digestBytes(bytes: Uint8Array): string {
@@ -170,8 +174,61 @@ export async function exportShare(input: {
       { peek: reference.peek ?? false },
     );
 
+  let sourcesIndex: ShareSources | undefined;
+
+  if (pins) {
+    const summaries = await input.data.changes(pins);
+    const wanted = new Map<string, { path: string; at: Pins }>();
+
+    const want = (path: string, at: Pins, commit: string) =>
+      wanted.set(`${commit}\0${path}`, {
+        path,
+        at: { repositoryId: at.repositoryId, base: commit, head: commit },
+      });
+
+    for (const summary of summaries) {
+      if (summary.binary) continue;
+
+      if (summary.status !== "added")
+        want(summary.previousPath ?? summary.path, pins, pins.base);
+
+      if (summary.status !== "deleted") want(summary.path, pins, pins.head);
+    }
+
+    for (const { source } of sources) {
+      const at = anchorPins(source, pins);
+      want(source.file, at, at[source.side ?? "head"]);
+    }
+
+    const files: ShareSources["files"] = [];
+
+    for (const { path, at } of wanted.values()) {
+      if (!sharePathSchema.safeParse(path).success) continue;
+
+      const text = await readText(input.data, at, path);
+
+      if (text === undefined) continue;
+
+      const bytes = Buffer.from(text);
+
+      if (bytes.byteLength > MAX_SHARE_OBJECT_BYTES) continue;
+
+      files.push({ path, commit: at.head, object: add(bytes) });
+    }
+
+    sourcesIndex = {
+      diff: json(summaries),
+      commits: json(await input.data.commits(pins)),
+      files,
+    };
+  }
+
   const snapshotId = json(snapshot);
-  const presentationId = json({ maps });
+
+  const presentationId = json({
+    maps,
+    ...(sourcesIndex && { sources: sourcesIndex }),
+  });
 
   const manifest = shareManifestSchema.parse({
     format: SHARE_FORMAT,
@@ -193,4 +250,14 @@ export async function exportShare(input: {
     throw new ReviewInputError("The share manifest exceeds the upload limit.");
 
   return { manifest, objects };
+}
+
+/** Missing sides and binary files are not shared. */
+async function readText(data: ShareExportData, pins: Pins, file: string) {
+  try {
+    return (await data.file(pins, "head", file)).text;
+  } catch (error) {
+    if (error instanceof ReviewInputError) return undefined;
+    throw error;
+  }
 }

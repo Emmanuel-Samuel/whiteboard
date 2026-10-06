@@ -125,9 +125,9 @@ submission.
 Sharing is explicit. `whiteboard share` uploads an immutable copy of one saved
 whiteboard version to the /dev/fast share service and returns a link. The copy
 includes the document text, images, software maps, the commits it is pinned
-to, your GitHub login, and the repository's GitHub clone URL. It does not
-upload source code: recipients fetch the pinned commits from GitHub with their
-own access. Anyone with the link can download the copy.
+to, your GitHub login, and the repository's GitHub clone URL. It includes the
+changed files and the source each code reference points at, as text at the
+pinned commits. Anyone with the link can read them.
 `whiteboard share revoke <share-id>` stops future downloads.
 
 ## Hosted trace store
