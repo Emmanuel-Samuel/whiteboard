@@ -1,9 +1,12 @@
-import type {
-  ReviewGatewayHostState,
-  ReviewHostStatus,
-  ReviewRemoteHostActions,
+import {
+  type ReviewGatewayHostState,
+  type ReviewHostStatus,
+  type ReviewRemoteHostActions,
+  reviewHostStatus,
 } from "@dev.fast/review-protocol";
 import { type RefObject, useEffect, useState } from "react";
+
+import type { ReviewSessionData } from "./host/review-session-data";
 
 const STATES_EVERY_MS = 3000;
 
@@ -51,6 +54,24 @@ export function useRemoteHostState(
 ) {
   return useRemoteHostStates(alias ? hosts : undefined, watch)?.find(
     (host) => host.alias === alias,
+  );
+}
+
+/** A remote review's host while it is not online, with the reason read live. */
+export function useReviewHostDown(
+  review: Pick<ReviewSessionData, "host" | "hostState" | "hosts"> | undefined,
+): ReviewHostStatus | undefined {
+  const { host, hostState, hosts } = review ?? {};
+
+  const down =
+    host !== undefined && hostState !== undefined && hostState !== "online";
+
+  const live = useRemoteHostState(hosts, host, down);
+
+  if (!down) return undefined;
+
+  return reviewHostStatus(
+    live && live.state !== "online" ? live : { alias: host, state: hostState },
   );
 }
 
