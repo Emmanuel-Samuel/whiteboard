@@ -78,6 +78,7 @@ export default defineConfig({
       {
         plugins: [stylexDevCss(), react()],
         resolve: { alias, dedupe: ["react", "react-dom"] },
+        optimizeDeps: { include: ["@pierre/diffs", "@pierre/diffs/react"] },
         test: {
           name: "browser",
           include: ["src/**/*.browser.test.{ts,tsx}"],

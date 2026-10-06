@@ -64,3 +64,53 @@ export const peekStyles = stylex.create({
     fontFamily: tokens.chromeFont,
   },
 });
+
+export const diffStyles = stylex.create({
+  scroller: {
+    "--diffs-font-family": tokens.fontMono,
+    height: "100%",
+    overflow: "auto",
+    outline: "none",
+  },
+  binary: {
+    paddingBlock: "8px",
+    paddingInline: "12px",
+    borderBottomWidth: "1px",
+    borderBottomStyle: "solid",
+    borderBottomColor: tokens.ruleSoft,
+    color: tokens.inkMuted,
+    fontFamily: tokens.fontMono,
+    fontSize: fontSize.body,
+  },
+  tree: {
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+    fontFamily: tokens.chromeFont,
+    fontSize: fontSize.body,
+  },
+  treeItem: {
+    display: "flex",
+    width: "100%",
+    borderWidth: 0,
+    font: "inherit",
+    textAlign: "left",
+    gap: "8px",
+    paddingBlock: "2px",
+    paddingInline: "8px",
+    color: tokens.ink,
+    cursor: "pointer",
+    backgroundColor: { default: "transparent", ":hover": tokens.surface },
+  },
+  treePath: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  treeCounts: {
+    flexShrink: 0,
+    color: tokens.inkFaint,
+  },
+});

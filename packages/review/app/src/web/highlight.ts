@@ -37,6 +37,12 @@ function languageFor(path: string): string | undefined {
   return extension && languages.get(extension.toLowerCase());
 }
 
+export function currentTheme(): "light" | "dark" {
+  return document.documentElement.dataset.reviewTheme === "light"
+    ? "light"
+    : "dark";
+}
+
 export function highlight(
   path: string,
   commit: string,
@@ -46,10 +52,7 @@ export function highlight(
 
   if (!lang) return Promise.resolve(undefined);
 
-  const theme =
-    document.documentElement.dataset.reviewTheme === "light"
-      ? "pierre-light"
-      : "pierre-dark";
+  const theme = currentTheme() === "light" ? "pierre-light" : "pierre-dark";
 
   const key = `${theme}\0${commit}\0${path}`;
   let tokens = cache.get(key);
