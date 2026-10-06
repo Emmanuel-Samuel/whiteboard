@@ -206,11 +206,7 @@ export class ReviewApiClient {
     if (!connections)
       liveConnections.set(this.request, (connections = new Map()));
 
-    const key = JSON.stringify([
-      this.connection.serverUrl,
-      this.connection.token,
-    ]);
-
+    const key = this.liveKey();
     let live = connections.get(key);
 
     if (!live) {
@@ -229,6 +225,13 @@ export class ReviewApiClient {
       (value) => accept(value as T),
       disconnected,
     );
+  }
+  /** Reopen the shared stream now rather than after its backoff. */
+  reconnect() {
+    liveConnections.get(this.request)?.get(this.liveKey())?.reconnect();
+  }
+  private liveKey() {
+    return JSON.stringify([this.connection.serverUrl, this.connection.token]);
   }
 }
 
@@ -342,7 +345,7 @@ class LiveConnection {
     }, restartDelayMs);
   }
 
-  private reconnect() {
+  reconnect() {
     this.abort.abort();
     this.abort = new AbortController();
     const listeners = [...this.listeners];
