@@ -5,6 +5,7 @@ import {
   type ReviewApiSummary,
   type ReviewGatewayHostState,
   parseJsonText,
+  reviewHostStatus,
 } from "@dev.fast/review-protocol";
 import { coverageModeSchema } from "@review/review-api/review-progress.js";
 import { z } from "zod";
@@ -47,7 +48,7 @@ export type Located =
   | undefined;
 
 export const downDetail = (down: ReviewGatewayHostState) =>
-  down.detail ?? `${down.alias} is ${down.state}.`;
+  reviewHostStatus(down).sentence;
 
 const watchPath = (subscriptions: object[]) =>
   `/reviews-api/watch?subscriptions=${encodeURIComponent(JSON.stringify(subscriptions))}`;
