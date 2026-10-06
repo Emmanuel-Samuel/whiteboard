@@ -162,3 +162,58 @@ it("find() without an editor counts matches", async () => {
     ),
   ).toEqual({ matchCount: 0 });
 });
+
+function sided(base: string) {
+  return createWebInlineEditors({
+    snapshot,
+    text: (path, commit) =>
+      path === "src/a.ts" ? (commit === B ? base : TEXT) : undefined,
+  });
+}
+
+function blocks(container: HTMLElement) {
+  return [...container.querySelectorAll<HTMLElement>("[data-range]")].map(
+    (range) => ({
+      side: range.dataset.side,
+      label: range.querySelector("[data-side-label]")?.textContent,
+      lines: [...range.querySelectorAll("[data-line] > :last-child")].map(
+        (code) => code.textContent,
+      ),
+    }),
+  );
+}
+
+it("reads each range from its own side", async () => {
+  const { container, ...rest } = spec({
+    ranges: [
+      { startLine: 2, endLine: 3, side: "base" },
+      { startLine: 3, endLine: 4, side: "head" },
+    ],
+  });
+
+  const handle = sided("old1\nold2\nold3\n").create({ container, ...rest });
+
+  await settled(() => container.querySelector("[data-line='4']"));
+  expect(blocks(container)).toEqual([
+    { side: "base", label: "Base", lines: ["old2", "old3"] },
+    { side: "head", label: undefined, lines: ["line3", "line4"] },
+  ]);
+  handle.dispose();
+});
+
+it("shows lines that read the same on both sides once", async () => {
+  const { container, ...rest } = spec({
+    ranges: [
+      { startLine: 2, endLine: 3, side: "base" },
+      { startLine: 2, endLine: 3, side: "head" },
+    ],
+  });
+
+  const handle = sided(TEXT).create({ container, ...rest });
+
+  await settled(() => container.querySelector("[data-line='3']"));
+  expect(container.querySelectorAll("[data-line='2']")).toHaveLength(1);
+  expect(container.querySelectorAll("[data-line='3']")).toHaveLength(1);
+  expect(container.querySelector("[data-side-label]")).toBeNull();
+  handle.dispose();
+});

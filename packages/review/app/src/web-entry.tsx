@@ -52,7 +52,6 @@ export function mountSharedReview(
     {
       kind: "api",
       reviewId: review.snapshot.reviewId,
-      version: review.snapshot.version,
       bridge,
     },
     ui,

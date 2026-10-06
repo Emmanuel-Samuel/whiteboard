@@ -1,4 +1,5 @@
 import type {
+  ReviewDiffSide,
   ReviewFindQuery,
   ReviewInlineEditorFactory,
   ReviewInlineEditorRange,
@@ -22,8 +23,16 @@ interface Match {
 }
 
 interface Found {
-  byLine: Map<number, Match[]>;
+  byLine: Map<string, Match[]>;
   count: number;
+}
+
+type Source = NonNullable<ReturnType<typeof source>>;
+
+interface Block {
+  side: ReviewDiffSide;
+  source: Source;
+  numbers: number[];
 }
 
 const ITALIC = 1;
@@ -48,23 +57,39 @@ function source(
     : { commit, text, lines: text.replace(/\r?\n$/, "").split(/\r?\n/) };
 }
 
-function rangeLines(
-  lines: readonly string[],
-  ranges: readonly ReviewInlineEditorRange[],
+/** Each range read at its own side; a range reading the same as one before it is shown once. */
+function rangeBlocks(
+  review: Review,
+  spec: Pick<ReviewInlineFindSpec, "path" | "side" | "pins" | "ranges">,
 ) {
-  return ranges.map((range) => {
+  const blocks: Block[] = [];
+  const shown = new Set<string>();
+
+  for (const range of spec.ranges) {
+    const side = range.side ?? spec.side;
+    const text = source(review, { ...spec, side });
+
+    if (!text) continue;
     const numbers: number[] = [];
 
     for (
       let n = Math.max(1, range.startLine);
-      n <= Math.min(range.endLine, lines.length);
+      n <= Math.min(range.endLine, text.lines.length);
       n++
     )
       numbers.push(n);
 
-    return numbers;
-  });
+    const key = JSON.stringify(numbers.map((n) => text.lines[n - 1]));
+
+    if (shown.has(key)) continue;
+    shown.add(key);
+    blocks.push({ side, source: text, numbers });
+  }
+
+  return blocks;
 }
+
+const lineKey = (block: number, line: number) => `${block}:${line}`;
 
 function matcher(query: ReviewFindQuery) {
   if (!query.text) return;
@@ -83,30 +108,27 @@ function matcher(query: ReviewFindQuery) {
   }
 }
 
-function find(
-  lines: readonly string[],
-  ranges: number[][],
-  regex: RegExp | undefined,
-): Found {
-  const byLine = new Map<number, Match[]>();
+function find(blocks: readonly Block[], regex: RegExp | undefined): Found {
+  const byLine = new Map<string, Match[]>();
   let count = 0;
 
   if (!regex) return { byLine, count };
 
-  for (const n of ranges.flat()) {
-    const matches: Match[] = [];
+  for (const [index, block] of blocks.entries())
+    for (const n of block.numbers) {
+      const matches: Match[] = [];
 
-    for (const match of lines[n - 1].matchAll(regex)) {
-      if (match[0])
-        matches.push({
-          start: match.index,
-          end: match.index + match[0].length,
-          index: count++,
-        });
+      for (const match of block.source.lines[n - 1].matchAll(regex)) {
+        if (match[0])
+          matches.push({
+            start: match.index,
+            end: match.index + match[0].length,
+            index: count++,
+          });
+      }
+
+      if (matches.length) byLine.set(lineKey(index, n), matches);
     }
-
-    if (matches.length) byLine.set(n, matches);
-  }
 
   return { byLine, count };
 }
@@ -195,25 +217,17 @@ export function createWebInlineEditors(
 ): ReviewInlineEditorFactory {
   return {
     async find(spec, query) {
-      const text = source(review, spec);
-
       return {
-        matchCount: text
-          ? find(
-              text.lines,
-              rangeLines(text.lines, spec.ranges),
-              matcher(query),
-            ).count
-          : 0,
+        matchCount: find(rangeBlocks(review, spec), matcher(query)).count,
       };
     },
     create(spec) {
-      const text = source(review, spec);
-      const ranges = text ? rangeLines(text.lines, spec.ranges) : [];
+      const blocks = rangeBlocks(review, spec);
+      const labelled = new Set(blocks.map((block) => block.side)).size > 1;
       const listeners = new Set<(height: number) => void>();
       const peek = element("div", false);
-      let tokens: ThemedToken[][] | undefined;
-      let found: Found = find([], [], undefined);
+      const tokens = new Map<string, ThemedToken[][]>();
+      let found: Found = find([], undefined);
       let active = spec.active;
       let collapsed = false;
       let activeMatch: number | undefined;
@@ -228,7 +242,7 @@ export function createWebInlineEditors(
             collapsed && styles.collapsed,
           ).className ?? "";
 
-        if (!text) {
+        if (!blocks.length) {
           peek.replaceChildren(
             element("div", styles.notice, "Not included in this share"),
           );
@@ -237,9 +251,16 @@ export function createWebInlineEditors(
         }
 
         peek.replaceChildren(
-          ...ranges.map((numbers) => {
+          ...blocks.map(({ side, source: text, numbers }, index) => {
             const range = element("div", styles.range);
             range.dataset.range = "";
+            range.dataset.side = side;
+
+            if (labelled && side === "base") {
+              const label = element("div", styles.sideLabel, "Base");
+              label.dataset.sideLabel = "";
+              range.append(label);
+            }
 
             for (const n of numbers) {
               const row = element("div", styles.line);
@@ -248,8 +269,8 @@ export function createWebInlineEditors(
                 element("span", styles.gutter, String(n)),
                 code(
                   text.lines[n - 1],
-                  tokens?.[n - 1],
-                  found.byLine.get(n) ?? [],
+                  tokens.get(text.commit)?.[n - 1],
+                  found.byLine.get(lineKey(index, n)) ?? [],
                   activeMatch,
                 ),
               );
@@ -274,15 +295,16 @@ export function createWebInlineEditors(
 
       observer.observe(peek);
 
-      if (text) {
+      for (const { source: text } of new Map(
+        blocks.map((block) => [block.source.commit, block]),
+      ).values())
         void highlight(spec.path, text.commit, text.text).then(
           (highlighted) => {
             if (disposed || !highlighted) return;
-            tokens = highlighted;
+            tokens.set(text.commit, highlighted);
             render();
           },
         );
-      }
 
       return {
         get height() {
@@ -303,9 +325,7 @@ export function createWebInlineEditors(
         },
         onDidError: () => ({ dispose() {} }),
         async setFindQuery(query) {
-          found = text
-            ? find(text.lines, ranges, matcher(query))
-            : find([], [], undefined);
+          found = find(blocks, matcher(query));
           activeMatch = undefined;
           render();
 
@@ -330,7 +350,7 @@ export function createWebInlineEditors(
           render();
         },
         clearFind() {
-          found = find([], [], undefined);
+          found = find([], undefined);
           activeMatch = undefined;
           render();
         },

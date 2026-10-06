@@ -141,9 +141,15 @@ it("shows a code peek and the Diff tab in both layouts", async () => {
     ),
   );
 
-  expect(peek?.closest("[data-code-rendering]")?.textContent).toContain(
-    "line2",
-  );
+  const peekRoot = peek!.closest("[data-code-rendering]")!;
+
+  expect(
+    [...peekRoot.querySelectorAll<HTMLElement>("[data-line]")].map(
+      (row) => row.dataset.line,
+    ),
+  ).toEqual(["2", "3"]);
+  expect(peekRoot.textContent?.split("line2")).toHaveLength(2);
+  expect(container.textContent).not.toContain("older version");
   await page.screenshot({ path: "__screenshots__/peek-and-diff/peek.png" });
 
   await act(async () =>
@@ -179,6 +185,7 @@ it("shows a code peek and the Diff tab in both layouts", async () => {
   expect(await diffShown("single")).toBe(true);
   expect(container.querySelector("[data-block-error]")).toBeNull();
   expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.textContent).not.toContain("older version");
   await page.screenshot({
     path: "__screenshots__/peek-and-diff/diff-unified.png",
   });

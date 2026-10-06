@@ -58,6 +58,12 @@ export const peekStyles = stylex.create({
   activeMatch: {
     backgroundColor: tokens.reviewFindMatchActiveBackground,
   },
+  sideLabel: {
+    paddingInline: "12px",
+    color: tokens.inkFaint,
+    fontFamily: tokens.chromeFont,
+    fontSize: fontSize.small,
+  },
   notice: {
     paddingInline: "12px",
     color: tokens.inkMuted,
