@@ -6,7 +6,10 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import { type JsonObject, isJsonObject } from "@dev.fast/review-protocol";
-import { MAX_SHARE_OBJECT_BYTES } from "@dev.fast/review-share-protocol";
+import {
+  MAX_SHARE_OBJECTS,
+  MAX_SHARE_OBJECT_BYTES,
+} from "@dev.fast/review-share-protocol";
 import { rangeAnchor } from "@review/lens-selection";
 import { ReviewInputError } from "@review/review-api/document.js";
 import { createReviewApi } from "@review/review-api/http.js";
@@ -791,6 +794,52 @@ it("skips binary and oversize files", async () => {
   expect(paths).toContain("main.ts");
   expect(paths).not.toContain("new.ts");
   expect(paths).not.toContain("image.png");
+});
+
+it("embeds anchor files first and skips sources beyond the object budget", async () => {
+  const { local, reviewId } = await fixture();
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  cleanup.push(async () => warn.mockRestore());
+
+  const generated = Array.from(
+    { length: MAX_SHARE_OBJECTS + 100 },
+    (_, i) => `gen/${i}.ts`,
+  );
+
+  const bundle = await exportShare({
+    ...local,
+    data: exportData(local.data, {
+      changes: (async (pins: Parameters<ShareExportData["changes"]>[0]) => [
+        ...generated.map((path) => ({
+          path,
+          status: "added",
+          additions: 1,
+          deletions: 0,
+          binary: false,
+        })),
+        ...(await local.data.changes(pins)),
+      ]) as ShareExportData["changes"],
+      file: (async (...args: Parameters<ShareExportData["file"]>) =>
+        args[2].startsWith("gen/")
+          ? { text: `export const file = "${args[2]}";\n` }
+          : local.data.file(...args)) as ShareExportData["file"],
+    }),
+    reviewId,
+    repository,
+  });
+
+  const { files } = sharedSources(bundle)!;
+  const pins = local.store.read(reviewId).pins!;
+
+  expect(bundle.manifest.objects.length).toBeLessThanOrEqual(MAX_SHARE_OBJECTS);
+  expect(files.length).toBeLessThan(generated.length);
+  expect(files).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ path: "main.ts", commit: pins.head }),
+      expect.objectContaining({ path: "new.ts", commit: pins.head }),
+    ]),
+  );
+  expect(warn).toHaveBeenCalled();
 });
 
 it("omits sources for a review without pins", async () => {

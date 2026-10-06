@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   MAX_SHARE_BYTES,
   MAX_SHARE_MANIFEST_BYTES,
+  MAX_SHARE_OBJECTS,
   MAX_SHARE_OBJECT_BYTES,
   SHARE_FORMAT,
   type ShareManifest,
@@ -175,6 +176,7 @@ export async function exportShare(input: {
     );
 
   let sourcesIndex: ShareSources | undefined;
+  const snapshotBytes = Buffer.from(JSON.stringify(snapshot));
 
   if (pins) {
     const summaries = await input.data.changes(pins);
@@ -186,6 +188,11 @@ export async function exportShare(input: {
         at: { repositoryId: at.repositoryId, base: commit, head: commit },
       });
 
+    for (const { source } of sources) {
+      const at = anchorPins(source, pins);
+      want(source.file, at, at[source.side ?? "head"]);
+    }
+
     for (const summary of summaries) {
       if (summary.binary) continue;
 
@@ -195,12 +202,19 @@ export async function exportShare(input: {
       if (summary.status !== "deleted") want(summary.path, pins, pins.head);
     }
 
-    for (const { source } of sources) {
-      const at = anchorPins(source, pins);
-      want(source.file, at, at[source.side ?? "head"]);
-    }
-
     const files: ShareSources["files"] = [];
+
+    const index = {
+      diff: json(summaries),
+      commits: json(await input.data.commits(pins)),
+      files,
+    };
+
+    let budget =
+      MAX_SHARE_BYTES -
+      totalBytes -
+      snapshotBytes.byteLength -
+      Buffer.byteLength(JSON.stringify({ maps, sources: index }));
 
     for (const { path, at } of wanted.values()) {
       if (!sharePathSchema.safeParse(path).success) continue;
@@ -213,17 +227,30 @@ export async function exportShare(input: {
 
       if (bytes.byteLength > MAX_SHARE_OBJECT_BYTES) continue;
 
-      files.push({ path, commit: at.head, object: add(bytes) });
+      const file = { path, commit: at.head, object: digestBytes(bytes) };
+      const fresh = !objects.has(file.object);
+
+      const cost =
+        Buffer.byteLength(JSON.stringify(file)) +
+        1 +
+        (fresh ? bytes.byteLength : 0);
+
+      if ((fresh && objects.size >= MAX_SHARE_OBJECTS - 2) || cost > budget) {
+        console.warn(
+          `Left ${path} at ${at.head} out of the share: it is full.`,
+        );
+        continue;
+      }
+
+      budget -= cost;
+      add(bytes);
+      files.push(file);
     }
 
-    sourcesIndex = {
-      diff: json(summaries),
-      commits: json(await input.data.commits(pins)),
-      files,
-    };
+    sourcesIndex = index;
   }
 
-  const snapshotId = json(snapshot);
+  const snapshotId = add(snapshotBytes);
 
   const presentationId = json({
     maps,
