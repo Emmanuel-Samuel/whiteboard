@@ -244,7 +244,7 @@ export function ShareControl() {
             <>
               <p {...stylex.props(styles.paragraph, styles.status)}>{label}</p>
               <p {...stylex.props(styles.paragraph, styles.status)}>
-                This is a read-only snapshot, available offline.
+                This is a read-only snapshot.
               </p>
             </>
           ) : signedIn ? (
@@ -260,6 +260,10 @@ export function ShareControl() {
                 <Button variant="primary" onClick={() => void copy(link)}>
                   {copied ? "Copied" : "Copy link"}
                 </Button>
+                <p {...stylex.props(styles.paragraph, styles.status)}>
+                  Includes the changed files and referenced source. Anyone with
+                  the link can read them.
+                </p>
               </>
             ) : error ? (
               <Button

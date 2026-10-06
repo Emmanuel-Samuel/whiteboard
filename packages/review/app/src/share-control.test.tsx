@@ -207,6 +207,9 @@ it("uploads on open for a signed-in user, retries after a failure, and copies th
   expect(publishes(harness)).toHaveLength(2);
   expect(container.querySelector("input")?.value).toContain("#capability");
   expect(container.textContent).not.toContain("Uploading");
+  expect(container.textContent).toContain(
+    "Includes the changed files and referenced source. Anyone with the link can read them.",
+  );
   let copied = "";
   Object.defineProperty(document, "execCommand", {
     configurable: true,
