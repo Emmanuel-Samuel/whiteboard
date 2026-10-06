@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -13,6 +13,7 @@ import { createReviewApi } from "@review/review-api/http.js";
 import { openLocalReviewStore } from "@review/review-api/local-data.js";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { gitShareFixture } from "./export-fixtures.js";
 import {
   type ShareBundle,
   type ShareExportData,
@@ -32,57 +33,33 @@ afterEach(async () => {
 });
 
 async function fixture() {
-  const root = await mkdtemp(path.join(os.tmpdir(), "review-sharing-"));
-  cleanup.push(() => rm(root, { recursive: true, force: true }));
-  const repo = path.join(root, "repo");
-  await mkdir(repo);
-
-  const git = (...args: string[]) =>
-    execFileSync("git", args, {
-      cwd: repo,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    }).trim();
-
-  git("init");
-  git("checkout", "-b", "feature/shared-head");
-  git("config", "user.name", "Fixture");
-  git("config", "user.email", "fixture@example.invalid");
-  await writeFile(path.join(repo, "main.ts"), "export const answer = 1;\n");
-  await writeFile(path.join(repo, "old.ts"), "export const moved = true;\n");
-  await writeFile(
-    path.join(repo, "deleted.ts"),
-    "export const obsolete = true;\n",
-  );
-  git("add", ".");
-  git("commit", "-m", "base");
-  const base = git("rev-parse", "HEAD");
-  await writeFile(path.join(repo, "main.ts"), "export const answer = 2;\n");
-  await writeFile(path.join(repo, "new.ts"), "export const added = true;\n");
-  git("add", ".");
-  git("mv", "old.ts", "renamed.ts");
-  git("rm", "deleted.ts");
-  git("commit", "-m", "head");
-  const head = git("rev-parse", "HEAD");
-  const local = openLocalReviewStore(path.join(root, "review.db"));
-  cleanup.push(() => local.store.close());
-  cleanup.push(() => local.data.close());
-  const repository = await local.data.register(repo);
-  const pins = { repositoryId: repository.id, base, head };
-
-  const created = await local.store.execute({
-    operation: {
-      type: "create",
+  const shared = await gitShareFixture(
+    await mkdtemp(path.join(os.tmpdir(), "review-sharing-")),
+    {
       title: "A shared review",
-      target: { kind: "commits", ...pins },
+      branch: "feature/shared-head",
+      base: {
+        "main.ts": "export const answer = 1;\n",
+        "old.ts": "export const moved = true;\n",
+        "deleted.ts": "export const obsolete = true;\n",
+      },
+      head: {
+        "main.ts": "export const answer = 2;\n",
+        "new.ts": "export const added = true;\n",
+        "deleted.ts": null,
+      },
+      moves: { "old.ts": "renamed.ts" },
     },
-  });
+  );
+
+  cleanup.push(shared.close);
+  const { root, repo, local, reviewId, pins } = shared;
 
   const traceId = randomUUID();
   await local.data.upload({
     kind: "trace",
     id: traceId,
-    repositoryId: repository.id,
+    repositoryId: pins.repositoryId,
     trace: {
       label: "Retained conversation",
       events: [
@@ -92,7 +69,7 @@ async function fixture() {
     },
   });
 
-  for (const content of [
+  await shared.insert([
     {
       type: "code_peek",
       source: rangeAnchor({
@@ -117,16 +94,9 @@ async function fixture() {
       eventId: "one",
       text: "Change the answer.",
     },
-  ])
-    await local.store.execute({
-      operation: {
-        type: "edit",
-        reviewId: created.reviewId,
-        edit: { type: "insert", content },
-      },
-    });
+  ]);
 
-  return { root, repo, local, reviewId: created.reviewId };
+  return { root, repo, local, reviewId };
 }
 
 const repository = { cloneUrl: "https://github.com/fixture/review.git" };

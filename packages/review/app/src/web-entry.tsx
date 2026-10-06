@@ -1,15 +1,15 @@
 import type {
+  ReviewCanvasBridge,
   ReviewCanvasHandle,
+  ReviewCanvasUi,
   ReviewDisposable,
 } from "@dev.fast/review-protocol";
 import type { ShareBundle } from "@review/sharing/export";
 import { readSharedReview } from "@review/sharing/read";
 
 import { mountReviewCanvas } from "./desktop-entry";
-import {
-  placeholderDiffView,
-  placeholderInlineEditors,
-} from "./web/placeholders";
+import { createWebDiffView } from "./web/diff-view";
+import { createWebInlineEditors } from "./web/inline-editors";
 import { createShareBridge } from "./web/share-bridge";
 
 import "./styles.css";
@@ -26,6 +26,7 @@ export interface MountSharedReviewOptions {
   onDidChangeTheme?: (
     listener: (theme: "dark" | "light") => void,
   ) => ReviewDisposable;
+  ui?: ReviewCanvasUi;
 }
 
 export function mountSharedReview(
@@ -33,18 +34,27 @@ export function mountSharedReview(
   bundle: ShareBundle,
   options: MountSharedReviewOptions,
 ): ReviewCanvasHandle {
+  const { ui, ...bridgeOptions } = options;
   const review = readSharedReview(bundle);
 
-  const bridge = createShareBridge(review, {
-    ...options,
-    inlineEditors: placeholderInlineEditors(),
-    diffView: placeholderDiffView(),
+  const bridge: ReviewCanvasBridge = createShareBridge(review, {
+    ...bridgeOptions,
+    inlineEditors: createWebInlineEditors(review),
+    diffView: createWebDiffView(
+      review,
+      () => bridge.currentDiffLayout(),
+      (listener) => bridge.onDidChangeDiffLayout(listener),
+    ),
   });
 
-  return mountReviewCanvas(container, {
-    kind: "api",
-    reviewId: review.snapshot.reviewId,
-    version: review.snapshot.version,
-    bridge,
-  });
+  return mountReviewCanvas(
+    container,
+    {
+      kind: "api",
+      reviewId: review.snapshot.reviewId,
+      version: review.snapshot.version,
+      bridge,
+    },
+    ui,
+  );
 }

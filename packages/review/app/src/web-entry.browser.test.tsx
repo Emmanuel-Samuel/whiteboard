@@ -1,17 +1,30 @@
 import type { JsonValue } from "@dev.fast/review-protocol";
 import { assignFreshIds, documentSchema } from "@review/review-api/document";
+import type { SharedSnapshot } from "@review/sharing/schemas";
 import { act } from "react";
 import { afterEach, expect, it } from "vitest";
+import { page } from "vitest/browser";
 
+import { testCanvasUi } from "./canvas-ui-test-utils";
 import { libavoidWasmUrl, settled } from "./fixture-review-bridge";
 import { mountSharedReview } from "./web-entry";
-import { testShareBundle } from "./web/test-share-bundle";
+import { shadowText } from "./web/test-shadow-text";
+import {
+  type TestShareSources,
+  testShareBundle,
+} from "./web/test-share-bundle";
 
 const tour = Object.values(
   import.meta.glob<{ default: JsonValue }>(
     "./fixtures/saved-reviews/three-minute-tour.json",
     { eager: true },
   ),
+)[0]!.default;
+
+const peekAndDiff = Object.values(
+  import.meta.glob<{
+    default: SharedSnapshot & { sources: TestShareSources };
+  }>("./fixtures/shares/peek-and-diff.json", { eager: true }),
 )[0]!.default;
 
 let canvas: ReturnType<typeof mountSharedReview> | undefined;
@@ -22,13 +35,17 @@ afterEach(async () => {
   document.body.replaceChildren();
 });
 
-async function mount(bundle: Awaited<ReturnType<typeof testShareBundle>>) {
+async function mount(
+  bundle: Awaited<ReturnType<typeof testShareBundle>>,
+  ui?: Parameters<typeof mountSharedReview>[2]["ui"],
+) {
   const container = document.createElement("div");
   document.body.append(container);
   await act(async () => {
     canvas = mountSharedReview(container, bundle, {
       wasmUrl: libavoidWasmUrl,
       theme: "dark",
+      ui,
     });
   });
 
@@ -97,3 +114,72 @@ it("renders a markdown-only shared review without pins", async () => {
   expect(container.querySelector("[data-block-error]")).toBeNull();
   expect(container.textContent).not.toMatch(/Connection lost|Diff/);
 });
+
+it("shows a code peek and the Diff tab in both layouts", async () => {
+  localStorage.removeItem("review-web:diff-layout");
+  const { sources, ...snapshot } = peekAndDiff;
+  const document = documentSchema.parse(snapshot.document);
+  let nextId = 0;
+
+  for (const block of document)
+    assignFreshIds(block, (prefix) => `${prefix}-${++nextId}`);
+
+  const menus = testCanvasUi();
+
+  const container = await mount(
+    await testShareBundle({
+      snapshot: { ...snapshot, document },
+      sources,
+      repository: { cloneUrl: "https://github.com/fixture/review.git" },
+    }),
+    menus.ui,
+  );
+
+  const peek = await settled(() =>
+    container.querySelector(
+      '[data-code-rendering="inline-editor"] [data-line="3"]',
+    ),
+  );
+
+  expect(peek?.closest("[data-code-rendering]")?.textContent).toContain(
+    "line2",
+  );
+  await page.screenshot({ path: "__screenshots__/peek-and-diff/peek.png" });
+
+  await act(async () =>
+    container.querySelector<HTMLElement>('button[aria-label="Diff"]')!.click(),
+  );
+
+  const diffShown = (style: string) =>
+    settled(
+      () =>
+        container
+          .querySelector(".diff-native-tree")
+          ?.textContent?.includes("src/a.ts") &&
+        [...container.querySelectorAll("[data-diff-file]")].some((section) =>
+          shadowText(section).includes("const added = 2;"),
+        ) &&
+        [...container.querySelectorAll("[data-diff-file] *")].some((element) =>
+          element.shadowRoot?.querySelector(`[data-diff-type="${style}"]`),
+        ),
+    );
+
+  expect(await diffShown("split")).toBe(true);
+  await page.screenshot({
+    path: "__screenshots__/peek-and-diff/diff-split.png",
+  });
+
+  await act(async () =>
+    container
+      .querySelector<HTMLElement>('button[aria-label="Diff settings"]')!
+      .click(),
+  );
+  await act(() => menus.select("unified"));
+
+  expect(await diffShown("single")).toBe(true);
+  expect(container.querySelector("[data-block-error]")).toBeNull();
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  await page.screenshot({
+    path: "__screenshots__/peek-and-diff/diff-unified.png",
+  });
+}, 30_000);

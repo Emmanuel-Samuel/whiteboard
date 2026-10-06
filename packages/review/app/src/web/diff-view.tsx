@@ -2,6 +2,7 @@ import type {
   ReviewDiffLayout,
   ReviewDiffViewFactory,
   ReviewDiffViewSpec,
+  ReviewDisposable,
 } from "@dev.fast/review-protocol";
 import { type FileDiffMetadata, parseDiffFromFile } from "@pierre/diffs";
 import { FileDiff, type FileDiffOptions } from "@pierre/diffs/react";
@@ -121,6 +122,9 @@ function DiffFiles({
 export function createWebDiffView(
   review: Review,
   layout: () => ReviewDiffLayout,
+  onDidChangeLayout: (
+    listener: (layout: ReviewDiffLayout) => void,
+  ) => ReviewDisposable,
 ): ReviewDiffViewFactory {
   return {
     files: async () => review.diff(),
@@ -157,25 +161,33 @@ export function createWebDiffView(
         section(path)?.scrollIntoView({ block: "start" });
       };
 
-      root.render(
-        <DiffFiles
-          shown={shown}
-          files={files}
-          tree={spec.fileTreeContainer}
-          options={{
-            diffStyle: layout() === "split" ? "split" : "unified",
-            theme: { dark: "pierre-dark", light: "pierre-light" },
-            themeType: currentTheme(),
-          }}
-          onReveal={revealFile}
-          onRendered={() => {
-            rendered = true;
+      const render = (diffLayout: ReviewDiffLayout) =>
+        root.render(
+          <DiffFiles
+            shown={shown}
+            files={files}
+            tree={spec.fileTreeContainer}
+            options={{
+              diffStyle: diffLayout === "split" ? "split" : "unified",
+              theme: { dark: "pierre-dark", light: "pierre-light" },
+              themeType: currentTheme(),
+            }}
+            onReveal={revealFile}
+            onRendered={onRendered}
+          />,
+        );
 
-            if (pending !== undefined) revealFile(pending);
-            pending = undefined;
-          }}
-        />,
-      );
+      const onRendered = () => {
+        rendered = true;
+
+        if (pending !== undefined) revealFile(pending);
+        pending = undefined;
+      };
+
+      render(layout());
+
+      const subscription = onDidChangeLayout(render);
+      disposables.push(() => subscription.dispose());
 
       if (missing.length) {
         const timer = setTimeout(() => {

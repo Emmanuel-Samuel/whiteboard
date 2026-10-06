@@ -1,3 +1,4 @@
+import type { JsonValue } from "@dev.fast/review-protocol";
 import { SHARE_FORMAT } from "@dev.fast/review-share-protocol";
 import type { ShareBundle } from "@review/sharing/export";
 import type {
@@ -12,15 +13,23 @@ export interface TestShareResource {
   bytes: Uint8Array;
 }
 
+export interface TestShareSources {
+  diff: JsonValue;
+  commits: JsonValue;
+  files: { path: string; commit: string; text: string }[];
+}
+
 export async function testShareBundle({
   snapshot,
   presentation = { maps: {} },
+  sources,
   resources = [],
   repository,
   attribution,
 }: {
   snapshot: SharedSnapshot;
   presentation?: SharePresentation;
+  sources?: TestShareSources;
   resources?: TestShareResource[];
   repository?: { cloneUrl: string };
   attribution?: ShareBundle["attribution"];
@@ -39,8 +48,26 @@ export async function testShareBundle({
     return id;
   };
 
-  const putJson = (value: SharedSnapshot | SharePresentation) =>
-    put(new TextEncoder().encode(JSON.stringify(value)));
+  const encode = (text: string) => new TextEncoder().encode(text);
+
+  const putJson = (value: SharedSnapshot | SharePresentation | JsonValue) =>
+    put(encode(JSON.stringify(value)));
+
+  if (sources)
+    presentation = {
+      ...presentation,
+      sources: {
+        diff: await putJson(sources.diff),
+        commits: await putJson(sources.commits),
+        files: await Promise.all(
+          sources.files.map(async ({ path, commit, text }) => ({
+            path,
+            commit,
+            object: await put(encode(text)),
+          })),
+        ),
+      },
+    };
 
   const manifestResources = await Promise.all(
     resources.map(async ({ bytes, ...resource }) => ({

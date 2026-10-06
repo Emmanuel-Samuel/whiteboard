@@ -8,6 +8,8 @@ import type {
 import type { Snapshot } from "@review/review-api/store";
 import type { SharedReview } from "@review/sharing/read";
 
+import { shareProgress } from "./share-progress";
+
 type Theme = "dark" | "light";
 
 export interface ShareBridgeOptions {
@@ -43,6 +45,7 @@ export function createShareBridge(
   let theme = options.theme;
   const themeListeners = new Set<(theme: Theme) => void>();
   const layoutListeners = new Set<(layout: ReviewDiffLayout) => void>();
+  let progress: ReturnType<typeof shareProgress> | undefined;
 
   options.onDidChangeTheme?.((next) => {
     theme = next;
@@ -101,7 +104,7 @@ export function createShareBridge(
 
     if (name === undefined) {
       if (resource === "progress")
-        return Response.json({ files: [], lenses: [], resolvedSelections: {} });
+        return Response.json((progress ??= shareProgress(review)));
 
       if (resource === "diff") return Response.json(review.diff());
 

@@ -1,11 +1,15 @@
 import { settled } from "@canvas/fixture-review-bridge";
-import type { ReviewDiffViewHandle } from "@dev.fast/review-protocol";
+import type {
+  ReviewDiffLayout,
+  ReviewDiffViewHandle,
+} from "@dev.fast/review-protocol";
 import type { ShareDiffFileSummary } from "@review/sharing/read";
 import type { SharedSnapshot } from "@review/sharing/schemas";
 import { act } from "react";
 import { afterEach, expect, it } from "vitest";
 
 import { createWebDiffView } from "./diff-view";
+import { shadowText } from "./test-shadow-text";
 
 const B = "b".repeat(40);
 
@@ -36,6 +40,8 @@ function review(
 ) {
   return { snapshot, diff: () => files, text };
 }
+
+const noLayoutChanges = () => ({ dispose() {} });
 
 const cleanup: (() => void)[] = [];
 
@@ -72,25 +78,28 @@ function mount(
 
 function rendered(container: HTMLElement) {
   return [...container.querySelectorAll("[data-diff-file]")]
-    .map(
-      (section) =>
-        (section.textContent ?? "") +
-        [...section.querySelectorAll("*")]
-          .map((element) => element.shadowRoot?.textContent ?? "")
-          .join(""),
-    )
+    .map(shadowText)
     .join("");
 }
 
 it("lists files", async () => {
-  const view = createWebDiffView(review([modified]), () => "unified");
+  const view = createWebDiffView(
+    review([modified]),
+    () => "unified",
+    noLayoutChanges,
+  );
 
   expect(await view.files()).toEqual([modified]);
 });
 
 it("renders the diff of each file from both texts", async () => {
   const errors: string[] = [];
-  const factory = createWebDiffView(review([modified]), () => "unified");
+
+  const factory = createWebDiffView(
+    review([modified]),
+    () => "unified",
+    noLayoutChanges,
+  );
 
   const { container, tree, view } = mount(({ container, tree }) =>
     factory.create({ container, fileTreeContainer: tree }),
@@ -120,6 +129,7 @@ it("reports a file with no text on either side through onDidError once", async (
   const factory = createWebDiffView(
     review([modified], () => undefined),
     () => "split",
+    noLayoutChanges,
   );
 
   const { view } = mount(({ container }) => factory.create({ container }));
@@ -147,6 +157,7 @@ it("shows a binary file as one row", async () => {
       () => undefined,
     ),
     () => "unified",
+    noLayoutChanges,
   );
 
   const { container, view } = mount(({ container }) =>
@@ -161,8 +172,54 @@ it("shows a binary file as one row", async () => {
 });
 
 it("does not throw revealing a file that is not in the diff", () => {
-  const factory = createWebDiffView(review([modified]), () => "unified");
+  const factory = createWebDiffView(
+    review([modified]),
+    () => "unified",
+    noLayoutChanges,
+  );
+
   const { view } = mount(({ container }) => factory.create({ container }));
 
   expect(() => view.revealFile?.("src/missing.ts")).not.toThrow();
+});
+
+function diffTypes(container: HTMLElement) {
+  return [...container.querySelectorAll("*")].flatMap((element) =>
+    [
+      ...(element.shadowRoot?.querySelectorAll<HTMLElement>(
+        "[data-diff-type]",
+      ) ?? []),
+    ].map((node) => node.dataset.diffType),
+  );
+}
+
+it("re-renders with the new style when the layout changes", async () => {
+  const listeners = new Set<(layout: ReviewDiffLayout) => void>();
+
+  const factory = createWebDiffView(
+    review([modified]),
+    () => "split",
+    (listener) => {
+      listeners.add(listener);
+
+      return { dispose: () => listeners.delete(listener) };
+    },
+  );
+
+  const { container, view } = mount(({ container }) =>
+    factory.create({ container }),
+  );
+
+  await settled(() => diffTypes(container).includes("split"));
+  expect(diffTypes(container)).toContain("split");
+
+  act(() => {
+    for (const listener of listeners) listener("unified");
+  });
+
+  await settled(() => diffTypes(container).includes("single"));
+  expect(diffTypes(container)).toEqual(["single"]);
+
+  view.dispose();
+  expect(listeners.size).toBe(0);
 });
