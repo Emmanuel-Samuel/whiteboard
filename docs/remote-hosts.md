@@ -226,8 +226,8 @@ login shell (`~/.profile` or your shell's own start-up file is enough):
 "Open file", the source tree and Ask's file links open a read-only Source
 window on the host, with search and language features.
 
-When the host stops answering, the status bar says so. The window reconnects
-when the host is back.
+When the host stops answering, the status bar says so and offers Retry. The
+window reconnects when the host is back.
 
 Not available in a Source window:
 
