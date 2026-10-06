@@ -4,7 +4,7 @@ import path from "node:path";
 
 import stylex from "@stylexjs/unplugin";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { type Rollup, defineConfig } from "vite";
 
 import { sourceAliases } from "../test-config";
 import { webStylexOptions } from "./stylex-options";
@@ -38,6 +38,31 @@ export default defineConfig({
       },
     },
     react(),
+    {
+      name: "stable-canvas-stylesheet",
+      enforce: "post",
+      generateBundle(_options, bundle) {
+        const [css, ...extra] = Object.values(bundle).filter(
+          (output): output is Rollup.OutputAsset =>
+            output.type === "asset" && output.fileName.endsWith(".css"),
+        );
+
+        if (!css || extra.length)
+          throw new Error("The web canvas build must emit one stylesheet.");
+
+        const fileName = "canvas.css";
+
+        delete bundle[css.fileName];
+        this.emitFile({ type: "asset", fileName, source: css.source });
+
+        for (const output of Object.values(bundle))
+          if (output.type === "chunk") {
+            const imported = output.viteMetadata?.importedCss;
+
+            if (imported?.delete(css.fileName)) imported.add(fileName);
+          }
+      },
+    },
     {
       name: "copy-canvas-companions",
       closeBundle() {
@@ -77,7 +102,10 @@ export default defineConfig({
       output: {
         entryFileNames: "canvas.js",
         chunkFileNames: "assets/[name]-[hash].js",
-        assetFileNames: "assets/[name]-[hash][extname]",
+        assetFileNames: ({ names }) =>
+          names.some((name) => name.endsWith(".css"))
+            ? "[name]-[hash][extname]"
+            : "assets/[name]-[hash][extname]",
       },
     },
   },
