@@ -316,6 +316,12 @@ export const styles = stylex.create({
     textAlign: "left",
   },
   unavailableRow: { opacity: 0.55 },
+  hostNotice: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: "12px",
+  },
   time: {
     color: tokens.inkFaint,
     fontVariantNumeric: "tabular-nums",

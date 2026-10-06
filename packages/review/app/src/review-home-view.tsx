@@ -2,8 +2,9 @@ import {
   REVIEW_DISCORD_URL,
   type ReviewApiSummary,
   type ReviewCanvasOnboarding,
-  type ReviewGatewayHostState,
+  type ReviewRemoteHostActions,
   homeSessions,
+  reviewHostStatus,
 } from "@dev.fast/review-protocol";
 import { fuzzySegments } from "@review/fuzzy-match";
 import * as stylex from "@stylexjs/stylex";
@@ -41,6 +42,11 @@ import {
 } from "./icons";
 import { homeGroupMarker, homeRowMarker } from "./markers.stylex";
 import { useNotify } from "./notify";
+import {
+  ACTION_WORDS,
+  useHostAction,
+  useRemoteHostState,
+} from "./remote-host-state";
 import type { ReviewFindHost } from "./review-find";
 import {
   HomeFilterPicker,
@@ -88,7 +94,7 @@ interface ReviewHomeProps {
   onDelete?(review: ReviewApiSummary): Promise<void>;
   onTrash?(review: ReviewApiSummary): Promise<void>;
   onRestore?(review: ReviewApiSummary): Promise<void>;
-  hostStates?(): Promise<readonly ReviewGatewayHostState[]>;
+  remoteHosts?: ReviewRemoteHostActions;
   onboarding?: ReviewCanvasOnboarding;
   onOpenTutorial?(): void;
   onOpenSettings?(): void;
@@ -138,7 +144,7 @@ export function ReviewHome({
   onDelete,
   onTrash,
   onRestore,
-  hostStates,
+  remoteHosts,
   onboarding,
   onOpenTutorial,
   onOpenSettings,
@@ -182,33 +188,29 @@ export function ReviewHome({
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState("");
-  const [hostMessage, setHostMessage] = useState<string>();
-  const hostMessageGeneration = useRef(0);
+  // The unavailable review last opened; it opens once its host is back.
+  const [waiting, setWaiting] = useState<ReviewApiSummary>();
 
   useEffect(() => {
-    hostMessageGeneration.current++;
-    setHostMessage(undefined);
+    if (!waiting) return;
+
+    const current = reviews.find(
+      (review) => review.reviewId === waiting.reviewId,
+    );
+
+    if (current && unavailable(current)) return setWaiting(current);
+    setWaiting(undefined);
+
+    if (current) onOpen(current);
   }, [reviews]);
 
   const open = useCallback(
-    async (review: ReviewApiSummary) => {
-      const generation = ++hostMessageGeneration.current;
-
-      if (!unavailable(review)) {
-        setHostMessage(undefined);
-        onOpen(review);
-
-        return;
-      }
-
-      setHostMessage(`${review.host} is ${hostStateWords(review)}.`);
-      const states = await hostStates?.().catch(() => undefined);
-      const detail = states?.find((host) => host.alias === review.host)?.detail;
-
-      if (detail && generation === hostMessageGeneration.current)
-        setHostMessage(detail);
+    (review: ReviewApiSummary) => {
+      if (unavailable(review)) return setWaiting(review);
+      setWaiting(undefined);
+      onOpen(review);
     },
-    [onOpen, hostStates],
+    [onOpen],
   );
 
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -1064,10 +1066,12 @@ export function ReviewHome({
             </StatusBanner>
           ) : null}
           {error && <p role="alert">{error}</p>}
-          {hostMessage ? (
-            <p role="alert">
-              <CopyableText text={hostMessage} />
-            </p>
+          {waiting?.host && waiting.hostState ? (
+            <HostNotice
+              alias={waiting.host}
+              state={waiting.hostState}
+              hosts={remoteHosts}
+            />
           ) : null}
           {!visible.length && (
             <EmptyState
@@ -1194,13 +1198,13 @@ export function ReviewHome({
                             event.stopPropagation();
 
                             if (inTrash) toggleRow(review.reviewId);
-                            else void open(review);
+                            else open(review);
                           }}
                         >
                           <span
                             title={
                               unavailable(review)
-                                ? `${review.host} is ${hostStateWords(review)}`
+                                ? hostStatus(review).label
                                 : reviewTitle(review)
                             }
                             {...stylex.props(
@@ -1503,7 +1507,7 @@ function RowTime({
   if (unavailable(review))
     return (
       <span title={review.createdAt} {...stylex.props(styles.time)}>
-        {hostStateWords(review)}
+        {hostStatus(review).status}
       </span>
     );
 
@@ -1542,8 +1546,37 @@ function unavailable(review: ReviewApiSummary): boolean {
   return review.hostState !== undefined && review.hostState !== "online";
 }
 
-function hostStateWords(review: ReviewApiSummary): string {
-  return review.hostState?.replace("-", " ") ?? "";
+function hostStatus(review: ReviewApiSummary) {
+  return reviewHostStatus({
+    alias: review.host ?? "",
+    state: review.hostState ?? "online",
+  });
+}
+
+function HostNotice({
+  alias,
+  state,
+  hosts,
+}: {
+  alias: string;
+  state: NonNullable<ReviewApiSummary["hostState"]>;
+  hosts?: ReviewRemoteHostActions;
+}) {
+  const live = useRemoteHostState(hosts, alias, true);
+  const { run, pending, failure } = useHostAction(hosts, alias);
+  const status = reviewHostStatus(live ?? { alias, state });
+  const { action } = status;
+
+  return (
+    <p role="alert" {...stylex.props(styles.hostNotice)}>
+      <CopyableText text={failure ?? status.sentence} />
+      {action && hosts ? (
+        <Button disabled={pending} onClick={() => run(action)}>
+          {ACTION_WORDS[action]}
+        </Button>
+      ) : null}
+    </p>
+  );
 }
 
 function PullRequestPill({

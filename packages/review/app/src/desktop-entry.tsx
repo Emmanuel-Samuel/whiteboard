@@ -129,7 +129,7 @@ function Home({
       onRestore={
         restoreReview ? (review) => restoreReview(review.reviewId) : undefined
       }
-      hostStates={content.hostStates}
+      remoteHosts={content.remoteHosts}
       onboarding={content.onboarding}
       onOpenTutorial={content.openTutorial}
       onOpenSettings={content.openSettings}
