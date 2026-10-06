@@ -511,17 +511,14 @@ async function steps(ctx, until, watch, timings, manifestPath) {
   assert.doesNotMatch(first.text, /\/home\//, "the question names a path");
 
   const settingsSteps = (await pageRecord(ctx)).rows[fresh].filter((text) =>
-    text.startsWith("installing · "),
+    STEP_ORDER.some((step) => text.startsWith(step)),
   );
 
   assert.ok(
     settingsSteps.length >= 2,
     `Settings showed ${settingsSteps.length} install step(s): ${settingsSteps}`,
   );
-  assertStepOrder(
-    settingsSteps.map((text) => text.slice("installing · ".length)),
-    "Settings",
-  );
+  assertStepOrder(settingsSteps, "Settings");
   await onRemote(
     fresh,
     `test -x ${ROOT}/versions/${version}/node_modules/@dev.fast/diffr-linux-x64/diffr`,
@@ -563,7 +560,7 @@ async function steps(ctx, until, watch, timings, manifestPath) {
   );
   await until(
     async () =>
-      /unsupported · .*glibc 2\.31/.test(
+      /glibc 2\.31; Whiteboard needs 2\.34/.test(
         await hostRow(oldSection, old).innerText(),
       ),
     "the Settings row to read unsupported",
