@@ -747,8 +747,17 @@ it("embeds diff summaries, commits and file texts at both pins", async () => {
 });
 
 it("embeds the file behind an anchor with its own pins", async () => {
-  const { local, reviewId } = await fixture();
+  const { local, reviewId, repo } = await fixture();
   const pins = local.store.read(reviewId).pins!;
+  await writeFile(path.join(repo, "later.ts"), "export const later = 1;\n");
+
+  const git = (...args: string[]) =>
+    execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+
+  git("add", "later.ts");
+  git("commit", "-m", "later");
+  const later = git("rev-parse", "HEAD");
+
   await local.store.execute({
     operation: {
       type: "edit",
@@ -759,22 +768,24 @@ it("embeds the file behind an anchor with its own pins", async () => {
           type: "code_peek",
           source: rangeAnchor({
             side: "head",
-            file: "old.ts",
+            file: "later.ts",
             fromLine: 1,
             toLine: 1,
           }),
-          pins: { repositoryId: pins.repositoryId, head: pins.base },
+          pins: { repositoryId: pins.repositoryId, head: later },
         },
       },
     },
   });
 
   const bundle = await exportShare({ ...local, reviewId, repository });
-  const files = sharedSources(bundle)!.files;
 
-  expect(
-    files.filter((file) => file.path === "old.ts" && file.commit === pins.base),
-  ).toHaveLength(1);
+  const file = sharedSources(bundle)!.files.find(
+    (item) => item.path === "later.ts",
+  );
+
+  expect(file?.commit).toBe(later);
+  expect(text(bundle, file!.object)).toBe("export const later = 1;\n");
 });
 
 it("skips binary and oversize files", async () => {
