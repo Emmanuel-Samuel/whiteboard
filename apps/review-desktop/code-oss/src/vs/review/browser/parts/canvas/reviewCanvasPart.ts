@@ -75,6 +75,7 @@ import type {
 	ReviewRuntimeConfig,
 	ReviewSurfaceEvent,
 	ReviewTheme,
+	ReviewVerbResponse,
 	TutorialProgressV1,
 	TutorialStepId,
 } from "../../../common/reviewProtocol.js";
@@ -87,6 +88,7 @@ import {
 } from "../../../common/reviewProtocol.js";
 import { IReviewVerbsService } from "../../../contrib/verbs/reviewVerbs.js";
 import { vetoStoppingAskAgents } from "../../reviewAskShutdown.js";
+import { notifyOpenFailure } from "./reviewHostFailure.js";
 import { confirmReviewDeletion } from "../../reviewDeleteConfirmation.js";
 import { showReviewNotification } from "../../reviewNotification.js";
 import { showReviewCanvasMenu } from "../../reviewCanvasMenu.js";
@@ -489,20 +491,18 @@ export class ReviewCanvasEditorPane extends EditorPane {
 							request: requestReviewApi,
 							post: async (request) => {
 								if (request.name === "openSourceTree") {
-									await this.tabsService.openApiSource(sourceSelection, input.getName());
-									return { ok: true };
+									return this.openSource(() => this.tabsService.openApiSource(sourceSelection, input.getName()));
 								}
 								if (request.name === "reveal") {
-									const range = { startLine: request.args.startLine, endLine: request.args.endLine };
-									await this.apiSource.open(
-										{ view: reviewSourceAnchor(sourceView, request.args.pins), file: request.args.path, side: request.args.side ?? "head" },
-										range,
-									);
-									return { ok: true };
+									const { args } = request;
+									return this.openSource(() => this.apiSource.open(
+										{ view: reviewSourceAnchor(sourceView, args.pins), file: args.path, side: args.side ?? "head" },
+										{ startLine: args.startLine, endLine: args.endLine },
+									));
 								}
 								if (request.name === "openDiff") {
-									await this.apiSource.openDiff(sourceView, request.args.path);
-									return { ok: true };
+									const { path } = request.args;
+									return this.openSource(() => this.apiSource.openDiff(sourceView, path));
 								}
 								return this.verbs.dispatch(request);
 							},
@@ -580,7 +580,7 @@ export class ReviewCanvasEditorPane extends EditorPane {
 						openSourceTree: (uuid) => {
 							const api = this.apiCatalog.reviews.find((review) => review.reviewId === uuid);
 							if (api) {
-								void this.tabsService.openApiSource({ reviewId: api.reviewId, kind: "current" }, api.title).catch(error => this.notificationService.error(error));
+								void this.tabsService.openApiSource({ reviewId: api.reviewId, kind: "current" }, api.title).catch(error => this.notifyOpenFailure(error));
 								return;
 							}
 						},
@@ -641,6 +641,21 @@ export class ReviewCanvasEditorPane extends EditorPane {
 			const [settings, install] = await Promise.all([this.resolveSettingsContent(), this.resolveInstallContent()]);
 			await this.render({ kind: "settings", settings: { ...settings, install } }, generation);
 			return;
+		}
+	}
+
+	private notifyOpenFailure(error: unknown): void {
+		notifyOpenFailure(this.notificationService, (alias) => this.desktopConnection.retryRemoteHost(alias), error);
+	}
+
+	/** Answers the canvas instead of rejecting, once the failure is shown. */
+	private async openSource(open: () => Promise<void>): Promise<ReviewVerbResponse> {
+		try {
+			await open();
+			return { ok: true };
+		} catch (error) {
+			this.notifyOpenFailure(error);
+			return { ok: false, error: error instanceof Error ? error.message : String(error) };
 		}
 	}
 

@@ -23,11 +23,13 @@ import {
 	ReviewCanvasEditorInput,
 	type ReviewCanvasEditorTarget,
 } from "../browser/parts/canvas/reviewCanvasEditorInput.js";
+import { ReviewHostDown } from "../browser/parts/canvas/reviewHostFailure.js";
 
 import { reviewSourceQuery, type ReviewRemoteNavigatorAnswer, type ReviewSourceSelection } from "../common/reviewProtocol.js";
 import { REVIEW_LANGUAGE_SOURCE_SCHEME } from "../common/reviewReadonlySource.js";
 import { sourceLocation, sourceSelectionIdentity, REVIEW_API_SOURCE_SCHEME } from "../common/reviewSourceView.js";
 import { reviewRemoteAuthority } from "./remote/reviewRemoteAuthority.js";
+import { IReviewApiCatalogService } from "./reviewApiCatalogService.js";
 import { IReviewDesktopConnectionService, reviewResponseError } from "./reviewDesktopConnectionService.js";
 
 type NavigatorAnswer = { workspacePath: string; filePath?: string } | ReviewRemoteNavigatorAnswer;
@@ -76,6 +78,7 @@ export class ReviewCanvasEditorTabsService extends Disposable implements IReview
 		@ILogService private readonly logService: ILogService,
 		@IFileService private readonly files: IFileService,
 		@IEnvironmentService private readonly environment: IEnvironmentService,
+		@IReviewApiCatalogService private readonly catalog: IReviewApiCatalogService,
 	) {
 		super();
 		this._register(
@@ -180,6 +183,8 @@ export class ReviewCanvasEditorTabsService extends Disposable implements IReview
 	}
 
 	private async navigatorWorkspace(reviewId: string, values: Record<string, string | number | undefined>): Promise<NavigatorAnswer> {
+		const review = this.catalog.reviews.find(review => review.reviewId === reviewId);
+		if (review?.host && review.hostState && review.hostState !== "online") throw new ReviewHostDown({ alias: review.host, state: review.hostState });
 		const { serverUrl, token } = await this.desktopConnection.getConnection();
 		const query = new URLSearchParams(Object.entries(values).filter(([key, value]) => key !== "reviewId" && value !== undefined).map(([key, value]) => [key, String(value)]));
 		const response = await fetch(`${serverUrl}/reviews-api/${encodeURIComponent(reviewId)}/navigator${query.size ? `?${query}` : ""}`, {
@@ -187,6 +192,11 @@ export class ReviewCanvasEditorTabsService extends Disposable implements IReview
 			headers: { "x-review-token": token },
 			signal: AbortSignal.timeout(60_000),
 		});
+		const alias = response.status === 503 && response.headers.get("x-review-host");
+		if (alias) {
+			const host = (await this.desktopConnection.readRemoteHosts().catch(() => [])).find(host => host.alias === alias);
+			throw new ReviewHostDown(host && host.state !== "online" ? host : { alias, state: "offline" });
+		}
 		if (!response.ok) throw await reviewResponseError(response, "Could not open the code navigator.");
 		return response.json();
 	}
