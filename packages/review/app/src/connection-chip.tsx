@@ -1,6 +1,7 @@
 import { fontSize, fontWeight, motion, radius } from "@canvas/scale.stylex";
 import { Button } from "@canvas/ui/button";
 import {
+  type ReviewHostStatus,
   type ReviewRemoteHostActions,
   reviewHostStatus,
 } from "@dev.fast/review-protocol";
@@ -94,6 +95,25 @@ export function ConnectionChip() {
   );
 }
 
+/** A host's next step as a button; `failure` says why the last one failed. */
+export function useHostActionButton(
+  hosts: ReviewRemoteHostActions | undefined,
+  alias: string | undefined,
+  action: ReviewHostStatus["action"],
+  retried?: () => void,
+) {
+  const { run, pending, failure } = useHostAction(hosts, alias, retried);
+
+  const button =
+    action && hosts ? (
+      <Button disabled={pending} onClick={() => run(action)}>
+        {ACTION_WORDS[action]}
+      </Button>
+    ) : null;
+
+  return { failure, button };
+}
+
 /** A remote review that has not loaded: what its host is doing, and the next step. */
 export function HostWaiting({
   host,
@@ -107,17 +127,23 @@ export function HostWaiting({
   lost?: string;
 }) {
   const state = useRemoteHostState(hosts, host, true);
-  const { run, pending, failure } = useHostAction(hosts, host, reconnect);
 
-  if (!state || state.state === "online")
+  const status =
+    state && state.state !== "online" ? reviewHostStatus(state) : undefined;
+
+  const { failure, button } = useHostActionButton(
+    hosts,
+    host,
+    status?.action,
+    reconnect,
+  );
+
+  if (!status)
     return lost === undefined ? null : (
       <p {...stylex.props(styles.waiting)} role="status">
         Connection lost. Reconnecting… {lost}
       </p>
     );
-
-  const status = reviewHostStatus(state);
-  const { action } = status;
 
   return (
     <section
@@ -129,11 +155,7 @@ export function HostWaiting({
       <p {...stylex.props(styles.waitingSentence)}>
         {failure ?? status.sentence}
       </p>
-      {action ? (
-        <Button disabled={pending} onClick={() => run(action)}>
-          {ACTION_WORDS[action]}
-        </Button>
-      ) : null}
+      {button}
     </section>
   );
 }

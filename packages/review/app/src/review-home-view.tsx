@@ -20,6 +20,7 @@ import {
   useState,
 } from "react";
 
+import { useHostActionButton } from "./connection-chip";
 import { CopyableText, copyText } from "./copy-text";
 import { countLabel, formatRelativeTime } from "./format";
 import { homeStyles } from "./home-styles";
@@ -42,11 +43,7 @@ import {
 } from "./icons";
 import { homeGroupMarker, homeRowMarker } from "./markers.stylex";
 import { useNotify } from "./notify";
-import {
-  ACTION_WORDS,
-  useHostAction,
-  useRemoteHostState,
-} from "./remote-host-state";
+import { useRemoteHostState } from "./remote-host-state";
 import type { ReviewFindHost } from "./review-find";
 import {
   HomeFilterPicker,
@@ -1563,18 +1560,13 @@ function HostNotice({
   hosts?: ReviewRemoteHostActions;
 }) {
   const live = useRemoteHostState(hosts, alias, true);
-  const { run, pending, failure } = useHostAction(hosts, alias);
   const status = reviewHostStatus(live ?? { alias, state });
-  const { action } = status;
+  const { failure, button } = useHostActionButton(hosts, alias, status.action);
 
   return (
     <p role="alert" {...stylex.props(styles.hostNotice)}>
       <CopyableText text={failure ?? status.sentence} />
-      {action && hosts ? (
-        <Button disabled={pending} onClick={() => run(action)}>
-          {ACTION_WORDS[action]}
-        </Button>
-      ) : null}
+      {button}
     </p>
   );
 }

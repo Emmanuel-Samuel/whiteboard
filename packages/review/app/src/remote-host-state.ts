@@ -5,27 +5,31 @@ import type {
 } from "@dev.fast/review-protocol";
 import { type RefObject, useEffect, useState } from "react";
 
-export const STATES_EVERY_MS = 3000;
+const STATES_EVERY_MS = 3000;
 
-export function useRemoteHostState(
-  hosts: ReviewRemoteHostActions | undefined,
-  alias: string | undefined,
-  watch: boolean,
+export function useRemoteHostStates(
+  hosts: Pick<ReviewRemoteHostActions, "states"> | undefined,
+  watch = true,
 ) {
-  const [state, setState] = useState<ReviewGatewayHostState>();
+  const [states, setStates] = useState<readonly ReviewGatewayHostState[]>();
 
   useEffect(() => {
-    if (!hosts || !alias || !watch) return;
+    if (!hosts || !watch) return;
     let live = true;
+    let reading = false;
 
     const read = () => {
-      if (document.hidden) return;
+      if (document.hidden || reading) return;
+      reading = true;
       void hosts
         .states()
-        .then((states) => {
-          if (live) setState(states.find((host) => host.alias === alias));
+        .then((next) => {
+          if (live) setStates(next);
         })
-        .catch(() => undefined);
+        .catch(() => undefined)
+        .finally(() => {
+          reading = false;
+        });
     };
 
     read();
@@ -35,9 +39,19 @@ export function useRemoteHostState(
       live = false;
       clearInterval(timer);
     };
-  }, [hosts, alias, watch]);
+  }, [hosts, watch]);
 
-  return watch ? state : undefined;
+  return watch ? states : undefined;
+}
+
+export function useRemoteHostState(
+  hosts: ReviewRemoteHostActions | undefined,
+  alias: string | undefined,
+  watch: boolean,
+) {
+  return useRemoteHostStates(alias ? hosts : undefined, watch)?.find(
+    (host) => host.alias === alias,
+  );
 }
 
 export const ACTION_WORDS: Record<
@@ -64,9 +78,7 @@ export function useHostAction(
         ? hosts.retry(alias).then(retried)
         : action === "install"
           ? hosts.install(alias)
-          : hosts
-              .openSettings()
-              .then(() => revealSettingsSection(REMOTE_HOSTS));
+          : hosts.openSettings().then(revealRemoteHosts);
 
     void step
       .catch((error: Error) => setFailure(error.message))
@@ -76,27 +88,22 @@ export function useHostAction(
   return { run, pending, failure };
 }
 
-export const REMOTE_HOSTS = "remote-hosts";
-
 // Every canvas tab shares this module, so a review can ask the Settings tab,
-// open or about to mount, to scroll.
-let requested: string | undefined;
+// open or about to mount, to scroll to Remote hosts.
+let requested = false;
 
 const reveals = new EventTarget();
 
-function revealSettingsSection(section: string) {
-  requested = section;
+function revealRemoteHosts() {
+  requested = true;
   reveals.dispatchEvent(new Event("reveal"));
 }
 
-export function useSettingsReveal(
-  section: string,
-  ref: RefObject<HTMLElement | null>,
-) {
+export function useSettingsReveal(ref: RefObject<HTMLElement | null>) {
   useEffect(() => {
     const reveal = () => {
-      if (requested !== section || !ref.current) return;
-      requested = undefined;
+      if (!requested || !ref.current) return;
+      requested = false;
       ref.current.scrollIntoView({ block: "start" });
     };
 
@@ -104,5 +111,5 @@ export function useSettingsReveal(
     reveals.addEventListener("reveal", reveal);
 
     return () => reveals.removeEventListener("reveal", reveal);
-  }, [section, ref]);
+  }, [ref]);
 }

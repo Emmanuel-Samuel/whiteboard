@@ -11,13 +11,24 @@ export interface ReviewHostStatus {
   busy?: true;
 }
 
-const STATUS: Record<
-  ReviewGatewayHostState["state"],
-  Pick<ReviewHostStatus, "action" | "busy"> & {
-    status: string;
-    label(alias: string): string;
-  }
-> = {
+type Wording = Pick<ReviewHostStatus, "action" | "busy"> & {
+  status: string;
+  label(alias: string): string;
+};
+
+const OFFLINE: Wording = {
+  status: "offline",
+  label: (alias) => `${alias} offline`,
+  action: "retry",
+};
+
+const UNUSABLE: Wording = {
+  status: "can't be used",
+  label: (alias) => `${alias} can't be used`,
+  action: "settings",
+};
+
+const STATUS: Record<ReviewGatewayHostState["state"], Wording> = {
   online: { status: "online", label: (alias) => alias },
   connecting: {
     status: "connecting",
@@ -29,16 +40,8 @@ const STATUS: Record<
     label: (alias) => `Installing on ${alias}…`,
     busy: true,
   },
-  offline: {
-    status: "offline",
-    label: (alias) => `${alias} offline`,
-    action: "retry",
-  },
-  unreachable: {
-    status: "offline",
-    label: (alias) => `${alias} offline`,
-    action: "retry",
-  },
+  offline: OFFLINE,
+  unreachable: OFFLINE,
   incompatible: {
     status: "needs an update",
     label: (alias) => `${alias} needs an update`,
@@ -54,16 +57,8 @@ const STATUS: Record<
     label: (alias) => `Can't sign in to ${alias}`,
     action: "settings",
   },
-  unsupported: {
-    status: "can't be used",
-    label: (alias) => `${alias} can't be used`,
-    action: "settings",
-  },
-  duplicate: {
-    status: "can't be used",
-    label: (alias) => `${alias} can't be used`,
-    action: "settings",
-  },
+  unsupported: UNUSABLE,
+  duplicate: UNUSABLE,
 };
 
 /** One wording and one next step per host state, shared by every surface. */
