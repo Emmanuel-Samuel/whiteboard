@@ -5,6 +5,11 @@ import { type ReactElement, useState } from "react";
 import { useReviewSession } from "./host/review-session";
 import { useReviewActions, useReviewState } from "./review-context";
 
+export const checkoutUnavailable = (host?: string) =>
+  host
+    ? `The checkout on ${host} is unavailable.`
+    : "Local checkout unavailable.";
+
 export function MissingCheckoutBanner({
   worktree,
 }: {
@@ -13,7 +18,9 @@ export function MissingCheckoutBanner({
   const session = useReviewSession();
   const { dismissReview } = useReviewActions();
   const { submissionOutcome } = useReviewState();
+  const host = useReviewSession().review?.host;
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
 
   return (
     <StatusBanner
@@ -24,11 +31,14 @@ export function MissingCheckoutBanner({
             disabled={busy}
             onClick={async () => {
               setBusy(true);
+              setError(undefined);
 
               try {
                 await dismissReview();
-              } catch (error) {
-                console.error("Review action failed", error);
+              } catch (failure) {
+                setError(
+                  `Could not move to Trash: ${failure instanceof Error ? failure.message : String(failure)}`,
+                );
                 setBusy(false);
               }
             }}
@@ -40,8 +50,9 @@ export function MissingCheckoutBanner({
     >
       {worktree
         ? "This review's worktree was removed."
-        : "Local checkout unavailable."}{" "}
+        : checkoutUnavailable(host)}{" "}
       Showing the source saved with the review.
+      {error && <span role="alert"> {error}</span>}
     </StatusBanner>
   );
 }
