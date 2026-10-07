@@ -47,6 +47,19 @@ import { ILanguageFeaturesService } from '../editor/common/services/languageFeat
 import { SymbolNavigationAnchor } from '../editor/contrib/gotoSymbol/browser/goToCommands.js';
 import { CommandsRegistry, ICommandService } from '../platform/commands/common/commands.js';
 import { IEditorService } from '../workbench/services/editor/common/editorService.js';
+import { NativeExtensionService } from '../workbench/services/extensions/electron-browser/nativeExtensionService.js';
+import { IExtensionService } from '../workbench/services/extensions/common/extensions.js';
+import { IRemoteAuthorityResolverService, type ResolverResult } from '../platform/remote/common/remoteAuthorityResolver.js';
+import { IMainProcessService } from '../platform/ipc/common/mainProcessService.js';
+import { REVIEW_DESKTOP_CHANNEL } from './common/reviewDesktopBootstrap.js';
+import { isReviewRemoteAuthority, reviewRemoteServerId } from './services/remote/reviewRemoteAuthority.js';
+import { reloadWhenOnline, reviewWindowAuthorityResolver, reviewWindowHosts } from './services/remote/reviewWindowAuthorityResolver.js';
+import { IHostService } from '../workbench/services/host/browser/host.js';
+import { FilesConfigurationService, IFilesConfigurationService } from '../workbench/services/filesConfiguration/common/filesConfigurationService.js';
+import type { IBaseFileStat } from '../platform/files/common/files.js';
+import { isEqual } from '../base/common/resources.js';
+import type { IMarkdownString } from '../base/common/htmlContent.js';
+import type { IWorkspaceContextService } from '../platform/workspace/common/workspace.js';
 
 class NavigatorDefaults {
 	constructor(@IStorageService storage: IStorageService) {
@@ -59,6 +72,45 @@ class NavigatorDefaults {
 }
 
 registerWorkbenchContribution2('review.navigator.defaults', NavigatorDefaults, WorkbenchPhase.BlockStartup);
+
+class NavigatorExtensionService extends NativeExtensionService {
+	private readonly windowHosts = this._instantiationService.invokeFunction((accessor) => reviewWindowHosts(accessor.get(IMainProcessService).getChannel(REVIEW_DESKTOP_CHANNEL)));
+	protected override readonly _remoteAuthorityResolverService = this._instantiationService.invokeFunction((accessor) =>
+		reviewWindowAuthorityResolver(accessor.get(IRemoteAuthorityResolverService), this.windowHosts));
+	private retrying = false;
+
+	protected override async _resolveAuthority(remoteAuthority: string): Promise<ResolverResult> {
+		if (!isReviewRemoteAuthority(remoteAuthority)) return super._resolveAuthority(remoteAuthority);
+		try {
+			return await this._remoteAuthorityResolverService.resolveAuthority(remoteAuthority);
+		} catch (error) {
+			if (!this.retrying) {
+				this.retrying = true;
+				const host = this._instantiationService.invokeFunction((accessor) => accessor.get(IHostService));
+				this._register(reloadWhenOnline(this.windowHosts, reviewRemoteServerId(remoteAuthority), () => void host.reload()));
+			}
+			throw error;
+		}
+	}
+}
+
+registerSingleton(IExtensionService, NavigatorExtensionService, InstantiationType.Eager);
+
+/** Every file in a Source window's folders is read-only, whatever a folder's settings say. */
+class NavigatorFilesConfigurationService extends FilesConfigurationService {
+	private readonly workspace: IWorkspaceContextService;
+
+	constructor(...args: ConstructorParameters<typeof FilesConfigurationService>) {
+		super(...args);
+		this.workspace = args[2];
+	}
+
+	override isReadonly(resource: URI, stat?: IBaseFileStat): boolean | IMarkdownString {
+		return super.isReadonly(resource, stat) || (!!this.workspace.getWorkspaceFolder(resource) && !isEqual(resource, this.workspace.getWorkspace().configuration ?? undefined));
+	}
+}
+
+registerSingleton(IFilesConfigurationService, NavigatorFilesConfigurationService, InstantiationType.Eager);
 
 CommandsRegistry.registerCommand('review.action.showReferencesInSource', async (accessor, resource: string, lineNumber: number, column: number) => {
 	const editorService = accessor.get(IEditorService);
