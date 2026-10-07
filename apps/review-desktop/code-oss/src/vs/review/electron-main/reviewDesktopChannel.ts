@@ -8,7 +8,10 @@ import { IServerChannel } from "../../base/parts/ipc/common/ipc.js";
 import type { IWindowsMainService } from "../../platform/windows/electron-main/windows.js";
 import type { ReviewDesktopConnection } from "../common/reviewDesktopBootstrap.js";
 import { REVIEW_SSH_ANSWER_CALL, REVIEW_SSH_PROMPT_EVENT } from "../common/reviewSshPrompt.js";
-import { reviewSshPromptRelay, type ReviewSshPromptRelay } from "./remote/reviewSshPromptRelay.js";
+import {
+  reviewSshPromptRelay,
+  type ReviewSshPromptRelay,
+} from "./remote/reviewSshPromptRelay.js";
 import type { ReviewDesktopHost } from "./reviewDesktopHost.js";
 
 export { REVIEW_DESKTOP_CHANNEL } from "../common/reviewDesktopBootstrap.js";
@@ -57,6 +60,23 @@ export class ReviewDesktopChannel implements IServerChannel {
     if (command === "retryRemoteHost") {
       if (typeof arg === "string") this.host.retryRemoteHost(arg);
       return undefined as T;
+    }
+    if (command === "detectRemoteAgents") {
+      if (typeof arg !== "string") throw new Error("Unknown agents request.");
+      return ((await this.host.detectRemoteAgents(arg)) ?? null) as T;
+    }
+    if (command === "connectRemoteAgents") {
+      const { alias, agents } = (arg ?? {}) as { alias?: unknown; agents?: unknown };
+      if (typeof alias !== "string" || !Array.isArray(agents) || agents.length > 16) throw new Error("Unknown agents request.");
+      return (await this.host.connectRemoteAgents(alias, agents)) as T;
+    }
+    if (command === "installRemoteHost") {
+      if (typeof arg === "string") await this.host.installRemoteHost(arg);
+      return undefined as T;
+    }
+    if (command === "uninstallRemoteHost") {
+      if (typeof arg !== "string") throw new Error("uninstallRemoteHost needs an alias.");
+      return (await this.host.uninstallRemoteHost(arg)) as T;
     }
     if (command === REVIEW_SSH_ANSWER_CALL) {
       const { id, answer } = (arg ?? {}) as { id?: unknown; answer?: unknown };

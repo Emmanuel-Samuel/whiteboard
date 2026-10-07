@@ -53,8 +53,14 @@ class ReviewSshPrompts extends Disposable {
 		const input = createSshPromptInput(
 			this.quickInputService,
 			prompt,
-			localize("review.sshPrompt.title", "SSH: {0}", prompt.alias),
+			prompt.kind === "install"
+				? localize("review.remoteInstallPrompt.title", "Install Whiteboard on {0}?", prompt.alias)
+				: localize("review.sshPrompt.title", "SSH: {0}", prompt.alias),
 			settle,
+			{
+				install: localize("review.remoteInstallPrompt.install", "Install"),
+				decline: localize("review.remoteInstallPrompt.decline", "Don't install"),
+			},
 		);
 		input.onDidHide(() => settle(undefined));
 		this.current = { id: prompt.id, input };

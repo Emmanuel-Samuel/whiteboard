@@ -19,7 +19,7 @@ import {
   useState,
 } from "react";
 
-import { copyText } from "./copy-text";
+import { CopyableText, copyText } from "./copy-text";
 import { countLabel, formatRelativeTime } from "./format";
 import { homeStyles } from "./home-styles";
 import { CanvasUiContext, useCanvasMenu } from "./host/canvas-ui";
@@ -1063,7 +1063,11 @@ export function ReviewHome({
             </StatusBanner>
           ) : null}
           {error && <p role="alert">{error}</p>}
-          {hostMessage ? <p role="alert">{hostMessage}</p> : null}
+          {hostMessage ? (
+            <p role="alert">
+              <CopyableText text={hostMessage} />
+            </p>
+          ) : null}
           {!visible.length && (
             <EmptyState
               message={

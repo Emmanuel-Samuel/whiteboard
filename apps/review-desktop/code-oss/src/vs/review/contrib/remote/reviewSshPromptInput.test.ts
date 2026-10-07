@@ -17,17 +17,17 @@ function fakeInput() {
 	return {
 		handlers,
 		value: "",
-		selectedItems: [] as { label: string }[],
+		selectedItems: [] as { answer: string }[],
 		onDidAccept: on("accept"),
 		onWillHide: on("willHide"),
-	} as Record<string, unknown> & { handlers: Record<string, () => void>; value: string; selectedItems: { label: string }[] };
+	} as Record<string, unknown> & { handlers: Record<string, () => void>; value: string; selectedItems: { answer: string }[] };
 }
 
-function create(kind: "secret" | "confirm" | "text", text: string) {
+function create(kind: "secret" | "confirm" | "text" | "install", text: string) {
 	const input = fakeInput();
 	const answers: (string | undefined)[] = [];
 	const service = { createInputBox: () => input, createQuickPick: () => input } as never;
-	createSshPromptInput(service, { id: 1, alias: "wb-test-a", text, kind }, "SSH: wb-test-a", (answer) => answers.push(answer));
+	createSshPromptInput(service, { id: 1, alias: "wb-test-a", text, kind }, "SSH: wb-test-a", (answer) => answers.push(answer), { install: "Install", decline: "Don't install" });
 	return { input, answers };
 }
 
@@ -55,7 +55,18 @@ test("a secret is hidden, answered with what was typed, and cleared before the w
 
 test("a confirm prompt answers with the picked yes or no", () => {
 	const { input, answers } = create("confirm", "Are you sure you want to continue connecting (yes/no/[fingerprint])? ");
-	input.selectedItems = [{ label: "no" }];
+	input.selectedItems = [{ answer: "no" }];
 	input.handlers.accept();
 	assert.deepEqual(answers, ["no"]);
+});
+
+test("an install prompt offers Install and Don't install, and answers which was picked", () => {
+	const { input, answers } = create("install", "Whiteboard 0.1.6 is not installed on wb-test-a.");
+	assert.deepEqual(
+		(input.items as { label: string }[]).map((item) => item.label),
+		["Install", "Don't install"],
+	);
+	input.selectedItems = [(input.items as { answer: string }[])[1]];
+	input.handlers.accept();
+	assert.deepEqual(answers, ["decline"]);
 });
