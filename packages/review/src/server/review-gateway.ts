@@ -51,7 +51,7 @@ const LOCAL_ROUTES = new Set([
 interface RemoteRoute {
   method: string;
   path: string;
-  /** May wait on preparing a checkout. */
+  /** May wait on preparing a checkout or launching an agent. */
   slow?: true;
 }
 
@@ -69,6 +69,23 @@ const REMOTE_ROUTES: readonly RemoteRoute[] = [
   { method: "GET", path: "maps/:name" },
   { method: "POST", path: "copy-context" },
   { method: "GET", path: "language-context", slow: true },
+  { method: "GET", path: "ask/agents" },
+  { method: "GET", path: "ask/agents/:agent/offer", slow: true },
+  { method: "GET", path: "ask/mentions", slow: true },
+  { method: "GET", path: "ask/threads" },
+  { method: "POST", path: "ask/watch" },
+  { method: "GET", path: "ask/:thread" },
+  { method: "POST", path: "ask", slow: true },
+  {
+    method: "POST",
+    path: "ask/:thread/:action{open|choice|permissions}",
+    slow: true,
+  },
+  {
+    method: "POST",
+    path: "ask/:thread/:action{prompt|permission|files|retry|cancel|close}",
+  },
+  { method: "DELETE", path: "ask/:thread" },
 ];
 
 const SLOW_ROUTE_TIMEOUT_MS = 120_000;

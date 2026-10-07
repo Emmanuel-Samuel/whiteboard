@@ -141,16 +141,19 @@ function AskFileLink({
   children: ReactNode;
 }): ReactNode {
   const files = useContext(AskFilesContext);
+  const canOpen = useReviewSession().review?.available?.sourceWindows !== false;
   const { path, line } = fileRef;
 
-  useEffect(() => files?.request(path), [files, path]);
+  useEffect(() => {
+    if (canOpen) files?.request(path);
+  }, [canOpen, files, path]);
   const file = files?.lookup(path);
 
   const tooltip = useTooltip<HTMLAnchorElement>(
     `Open ${file}${line ? `:${line}` : ""}`,
   );
 
-  if (!files || !file) return fallback;
+  if (!canOpen || !files || !file) return fallback;
   const open = () => files.open(file, line);
 
   // A link, not a button: a button is one box, so a long path would jump to
