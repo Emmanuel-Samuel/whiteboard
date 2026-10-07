@@ -116,9 +116,10 @@ export async function send(
   retry = true,
 ): Promise<Dispatcher.ResponseData> {
   if (!remote.endpoint) throw new Error(`${remote.alias} has no endpoint.`);
+  let response: Dispatcher.ResponseData;
 
   try {
-    return await request(new URL(input.path, remote.endpoint.url), {
+    response = await request(new URL(input.path, remote.endpoint.url), {
       dispatcher: remote.dispatcher,
       method: input.method,
       headers: input.headers,
@@ -139,6 +140,10 @@ export async function send(
 
     throw error;
   }
+
+  if (response.statusCode === 401) remote.unauthorized?.();
+
+  return response;
 }
 
 export async function readBody(

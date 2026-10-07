@@ -121,7 +121,13 @@ export function trashDaysLeft(review: ReviewApiSummary, now: number): number {
 export function repositoryIdentity(
   review: ReviewApiSummary,
 ): { key: string; label: string } | undefined {
-  if (review.repositoryGroup) return review.repositoryGroup;
+  if (review.repositoryGroup)
+    return review.host
+      ? {
+          key: review.repositoryGroup.key,
+          label: `${review.host}: ${review.repositoryGroup.label}`,
+        }
+      : review.repositoryGroup;
   const remote = review.shared?.cloneUrl || review.origin?.pullRequestUrl;
 
   if (!remote) return undefined;

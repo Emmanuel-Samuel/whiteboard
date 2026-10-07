@@ -1,4 +1,7 @@
-import type { ReviewApiSummary } from "@dev.fast/review-protocol";
+import type {
+  ReviewApiSummary,
+  ReviewGatewayHostState,
+} from "@dev.fast/review-protocol";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -901,4 +904,109 @@ describe("Home interactions", () => {
     await render(reviews, { onTrash: success });
     expect(titles()).toEqual(["One"]);
   });
+  it.each([
+    ["offline", "offline"],
+    ["connecting", "connecting"],
+    ["not-installed", "not installed"],
+  ] as const)(
+    "draws a %s host's review as unavailable, and opening it shows the host's detail",
+    async (hostState, words) => {
+      const onOpen = vi.fn<(review: ReviewApiSummary) => void>();
+
+      await render([remote("Remote", { hostState })], {
+        onOpen,
+        hostStates: async () => [
+          {
+            alias: "devbox",
+            state: hostState,
+            detail: "devbox is offline: it did not answer within 3 seconds.",
+          },
+        ],
+      });
+
+      const row = container.querySelector("[data-home-row]")!;
+
+      expect(row.hasAttribute("data-unavailable")).toBe(true);
+      expect(row.textContent).toContain(words);
+      expect(button("Open Remote").getAttribute("aria-disabled")).toBe("true");
+      expect(
+        button("Open Remote")
+          .querySelector("span[title]")!
+          .getAttribute("title"),
+      ).toBe(`devbox is ${words}`);
+      await click("Open Remote");
+      expect(onOpen).not.toHaveBeenCalled();
+      expect(alert()).toBe(
+        "devbox is offline: it did not answer within 3 seconds.",
+      );
+    },
+  );
+  it("says only the state while the host's detail loads or when it has none", async () => {
+    const answer = Promise.withResolvers<ReviewGatewayHostState[]>();
+    await render([remote("Remote", { hostState: "offline" })], {
+      hostStates: () => answer.promise,
+    });
+    await click("Open Remote");
+    expect(alert()).toBe("devbox is offline.");
+    await act(async () =>
+      answer.resolve([{ alias: "devbox", state: "offline" }]),
+    );
+    expect(alert()).toBe("devbox is offline.");
+  });
+  it("keeps the message of the last unavailable review opened, and drops it when the list changes", async () => {
+    const answers = [
+      Promise.withResolvers<ReviewGatewayHostState[]>(),
+      Promise.withResolvers<ReviewGatewayHostState[]>(),
+    ];
+
+    let calls = 0;
+    const hostStates = () => answers[calls++]!.promise;
+
+    const reviews = [
+      remote("One", { hostState: "offline" }),
+      remote("Two", { host: "other", hostState: "offline" }),
+    ];
+
+    const states = [
+      { alias: "devbox", state: "offline" as const, detail: "devbox detail" },
+      { alias: "other", state: "offline" as const, detail: "other detail" },
+    ];
+
+    await render(reviews, { hostStates });
+    await click("Open One");
+    await click("Open Two");
+    await act(async () => answers[1]!.resolve(states));
+    await act(async () => answers[0]!.resolve(states));
+    expect(alert()).toBe("other detail");
+    await render([{ ...reviews[1]!, hostState: "online" }], { hostStates });
+    expect(alert()).toBeUndefined();
+  });
+  it("draws an online remote review as available", async () => {
+    const onOpen = vi.fn<(review: ReviewApiSummary) => void>();
+    const review = remote("Remote");
+    await render([review], { onOpen });
+    expect(
+      container
+        .querySelector("[data-home-row]")!
+        .hasAttribute("data-unavailable"),
+    ).toBe(false);
+    await click("Open Remote");
+    expect(onOpen).toHaveBeenCalledWith(review);
+  });
+
+  function alert() {
+    return container.querySelector('[role="alert"]')?.textContent;
+  }
 });
+
+function remote(
+  title: string,
+  extra: Partial<ReviewApiSummary> = {},
+): ReviewApiSummary {
+  return summary(title, {
+    host: "devbox",
+    hostState: "online",
+    available: { sourceWindows: false, languageFeatures: false },
+    ...extra,
+  });
+}

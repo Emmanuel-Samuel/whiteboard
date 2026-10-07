@@ -2,12 +2,14 @@ import {
   REVIEW_DISCORD_URL,
   type ReviewApiSummary,
   type ReviewCanvasOnboarding,
+  type ReviewGatewayHostState,
   homeSessions,
 } from "@dev.fast/review-protocol";
 import { fuzzySegments } from "@review/fuzzy-match";
 import * as stylex from "@stylexjs/stylex";
 import {
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useEffectEvent,
@@ -85,6 +87,7 @@ interface ReviewHomeProps {
   onDelete?(review: ReviewApiSummary): Promise<void>;
   onTrash?(review: ReviewApiSummary): Promise<void>;
   onRestore?(review: ReviewApiSummary): Promise<void>;
+  hostStates?(): Promise<readonly ReviewGatewayHostState[]>;
   onboarding?: ReviewCanvasOnboarding;
   onOpenTutorial?(): void;
   onOpenSettings?(): void;
@@ -134,6 +137,7 @@ export function ReviewHome({
   onDelete,
   onTrash,
   onRestore,
+  hostStates,
   onboarding,
   onOpenTutorial,
   onOpenSettings,
@@ -177,6 +181,35 @@ export function ReviewHome({
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState("");
+  const [hostMessage, setHostMessage] = useState<string>();
+  const hostMessageGeneration = useRef(0);
+
+  useEffect(() => {
+    hostMessageGeneration.current++;
+    setHostMessage(undefined);
+  }, [reviews]);
+
+  const open = useCallback(
+    async (review: ReviewApiSummary) => {
+      const generation = ++hostMessageGeneration.current;
+
+      if (!unavailable(review)) {
+        setHostMessage(undefined);
+        onOpen(review);
+
+        return;
+      }
+
+      setHostMessage(`${review.host} is ${hostStateWords(review)}.`);
+      const states = await hostStates?.().catch(() => undefined);
+      const detail = states?.find((host) => host.alias === review.host)?.detail;
+
+      if (detail && generation === hostMessageGeneration.current)
+        setHostMessage(detail);
+    },
+    [onOpen, hostStates],
+  );
+
   const [notice, setNotice] = useState<Notice | null>(null);
   const [localView, setLocalView] = useState<"active" | "trash">("active");
   const inTrash = (view ?? localView) === "trash";
@@ -1030,6 +1063,7 @@ export function ReviewHome({
             </StatusBanner>
           ) : null}
           {error && <p role="alert">{error}</p>}
+          {hostMessage ? <p role="alert">{hostMessage}</p> : null}
           {!visible.length && (
             <EmptyState
               message={
@@ -1105,6 +1139,7 @@ export function ReviewHome({
                           homeRowMarker,
                           styles.row,
                           styles.waterfall(index),
+                          unavailable(review) && styles.unavailableRow,
                           isSelected(index) && styles.selected,
                           isSelected(index) &&
                             isSelected(index - 1) &&
@@ -1113,8 +1148,9 @@ export function ReviewHome({
                             isSelected(index + 1) &&
                             styles.selectedBefore,
                         )}
+                        data-unavailable={unavailable(review) ? "" : undefined}
                         onClick={() =>
-                          inTrash ? toggleRow(review.reviewId) : onOpen(review)
+                          inTrash ? toggleRow(review.reviewId) : open(review)
                         }
                         onKeyDown={(event) => {
                           if (
@@ -1147,16 +1183,21 @@ export function ReviewHome({
                         <button
                           type="button"
                           aria-label={`${inTrash ? "Select" : "Open"} ${reviewTitle(review)}`}
+                          aria-disabled={unavailable(review) || undefined}
                           {...stylex.props(styles.rowOpen)}
                           onClick={(event) => {
                             event.stopPropagation();
 
                             if (inTrash) toggleRow(review.reviewId);
-                            else onOpen(review);
+                            else void open(review);
                           }}
                         >
                           <span
-                            title={reviewTitle(review)}
+                            title={
+                              unavailable(review)
+                                ? `${review.host} is ${hostStateWords(review)}`
+                                : reviewTitle(review)
+                            }
                             {...stylex.props(
                               styles.title,
                               inTrash && styles.muted,
@@ -1444,6 +1485,13 @@ function RowTime({
   now: number;
   inTrash: boolean;
 }) {
+  if (unavailable(review))
+    return (
+      <span title={review.createdAt} {...stylex.props(styles.time)}>
+        {hostStateWords(review)}
+      </span>
+    );
+
   if (review.working)
     return (
       <span
@@ -1473,6 +1521,14 @@ function RowTime({
       {formatRelativeTime(review.createdAt, now)}
     </span>
   );
+}
+
+function unavailable(review: ReviewApiSummary): boolean {
+  return review.hostState !== undefined && review.hostState !== "online";
+}
+
+function hostStateWords(review: ReviewApiSummary): string {
+  return review.hostState?.replace("-", " ") ?? "";
 }
 
 function MiddleTruncatedText({

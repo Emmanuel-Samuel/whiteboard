@@ -21,6 +21,10 @@ import { ReviewBranchRange, WORKING_TREE } from "./review-branch-range";
 import { useReviewDiffFiles } from "./review-diff-files-context";
 import { tokens } from "./tokens.stylex";
 
+// A remote host's snapshot is untrusted: link only canonical PR URLs.
+const PULL_REQUEST_URL =
+  /^https:\/\/[a-z0-9.-]+\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/[1-9]\d*$/;
+
 interface ReviewDocumentMetaState {
   pullRequestNumber: number | null;
   pullRequestUrl: string | null;
@@ -152,18 +156,21 @@ export function ReviewDocumentMetaLine({
     >
       <div {...stylex.props(styles.row, styles.top)} data-review-copy-ignore>
         <div {...stylex.props(styles.row, styles.identity)}>
-          {repository ? (
+          {review.host || repository ? (
             <span>
-              {repository[1]} / {repository[2]}
+              {review.host}
+              {review.host && repository ? ": " : null}
+              {repository ? `${repository[1]} / ${repository[2]}` : null}
             </span>
           ) : null}
-          {repository && meta.pullRequestNumber != null ? (
+          {(review.host || repository) && meta.pullRequestNumber != null ? (
             <span {...stylex.props(styles.separator)} aria-hidden="true">
               ·
             </span>
           ) : null}
           {meta.pullRequestNumber != null &&
-            (meta.pullRequestUrl ? (
+            (meta.pullRequestUrl &&
+            PULL_REQUEST_URL.test(meta.pullRequestUrl) ? (
               <a
                 href={meta.pullRequestUrl}
                 target="_blank"
