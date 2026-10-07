@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { execFile, execFileSync, spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -135,6 +135,53 @@ test("a host with no Node downloads the tarball, with diffr inside it; whiteboar
 	assert.deepEqual(await installRemote(again.value), result);
 	assert.deepEqual(again.progress.map((p) => p.step), ["done"]);
 	assert.equal(await inContainer("fresh", "ls -d ~/.dev/whiteboard-remote/install.lock 2>/dev/null | wc -l"), "0");
+});
+
+const FETCH = `const [url, token, method, path, body] = process.argv.slice(1);
+const response = await fetch(url + path, { method, headers: { "x-review-token": token, "content-type": "application/json" }, body: method === "GET" ? undefined : body });
+const bytes = Buffer.from(await response.arrayBuffer());
+console.log(JSON.stringify({ status: response.status, type: response.headers.get("content-type"), size: bytes.length, text: bytes.toString() }));`;
+const PIXEL = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+test("an install has the adapters but not the bundled agent binaries; instructions, images and structural diff answer", { skip, timeout: 10 * 60_000 }, async (t) => {
+	await installRemote(input("fresh").value);
+	const modules = `${installed}/node_modules`;
+
+	assert.equal(await inContainer("fresh", `test -f ${modules}/@agentclientprotocol/codex-acp/dist/index.js && echo yes`), "yes");
+	assert.equal(await inContainer("fresh", `test -f ${modules}/@agentclientprotocol/claude-agent-acp/dist/index.js && echo yes`), "yes");
+	assert.equal(await inContainer("fresh", `ls -d ${modules}/@openai/codex-* ${modules}/@anthropic-ai/claude-agent-sdk-* 2>/dev/null | wc -l`), "0");
+	assert.equal(await inContainer("fresh", `test -x ${modules}/@dev.fast/diffr-linux-*/diffr && echo yes`), "yes");
+	assert.equal(await version("fresh"), VERSION);
+
+	await inContainer(
+		"fresh",
+		`git init -q -b main ~/repo && cd ~/repo && printf 'export const a = 1;\\n' > a.ts && git add . && git -c user.name=t -c user.email=t@t commit -qm one && printf 'export const a = 2;\\n' > a.ts && git -c user.name=t -c user.email=t@t commit -qam two`,
+	);
+	t.after(() => inContainer("fresh", "~/.local/bin/whiteboard server stop; rm -rf ~/repo"));
+	const attach = JSON.parse((await inContainer("fresh", "~/.local/bin/whiteboard remote attach --json")).split("\n").find((line) => line.startsWith("{"))!);
+	const api = async (method: string, path: string, body?: unknown) =>
+		JSON.parse((await run("docker", ["exec", "-u", "dev", `wb-test-${runId}-fresh`, `${installed}/bin/node`, "--input-type=module", "-e", FETCH, attach.url, attach.token, method, `/reviews-api${path}`, JSON.stringify(body ?? null)])).stdout);
+	const instructions = await api("GET", "/instructions?topic=authoring");
+	assert.equal(instructions.status, 200, instructions.text);
+	assert.ok(instructions.size > 0);
+	const [base, head] = (await inContainer("fresh", "cd ~/repo && git rev-parse HEAD~1 HEAD")).split("\n");
+	const repositoryId = JSON.parse((await api("POST", "/repositories", { path: "/home/dev/repo" })).text).id;
+	const { reviewId } = JSON.parse(
+		(await api("POST", "/commands", { operation: { type: "create", title: "Install check", target: { kind: "commits", repositoryId, base, head } } })).text,
+	);
+
+	const id = randomUUID();
+	assert.equal((await api("POST", "/resources", { id, repositoryId, kind: "image", base64: PIXEL })).status, 200);
+	const image = await api("GET", `/${reviewId}/resources/${id}`);
+	assert.deepEqual([image.status, image.type], [200, "image/png"]);
+	assert.ok(image.size > 0);
+
+	const diff = await api("GET", `/${reviewId}/structural-diff`);
+	assert.equal(diff.status, 200);
+	const events = diff.text.trim().split("\n").map((line: string) => JSON.parse(line));
+	assert.ok(events.some((event: { type: string }) => event.type === "file"));
+	assert.equal(events.at(-1).type, "complete");
+	assert.equal(events.at(-1).failed, 0);
 });
 
 test("a tarball the host cannot download fails the install with the URL and leaves nothing", { skip, timeout: 10 * 60_000 }, async () => {
