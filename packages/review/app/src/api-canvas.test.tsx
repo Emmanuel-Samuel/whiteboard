@@ -1294,7 +1294,7 @@ it("gives a review on another machine no tutorial controls, even a tutorial revi
 
 async function mountPeekReview(content: {
   host?: string;
-  available?: { sourceWindows: boolean; languageFeatures: boolean };
+  available?: { sourceWindows: boolean };
 }) {
   const review = await command({
     type: "create",
@@ -1387,18 +1387,24 @@ async function mountPeekReview(content: {
 
   const container = document.createElement("div");
   document.body.append(container);
+
+  const mounted = {
+    kind: "api" as const,
+    reviewId: review.reviewId,
+    bridge,
+    setSourceView: () => {},
+    ...content,
+  };
+
   await act(async () => {
-    canvas = mount(container, {
-      kind: "api",
-      reviewId: review.reviewId,
-      bridge,
-      setSourceView: () => {},
-      ...content,
-    });
+    canvas = mount(container, mounted);
   });
   await act(async () => {
     await vi.waitFor(() => expect(inline).toHaveLength(1));
   });
+
+  const setAvailable = (available: (typeof content)["available"]) =>
+    act(async () => canvas!.update({ ...mounted, available }));
 
   const button = (label: string) =>
     [...container.querySelectorAll<HTMLButtonElement>("button")].find(
@@ -1407,13 +1413,13 @@ async function mountPeekReview(content: {
         candidate.getAttribute("aria-label") === label,
     );
 
-  return { container, inline, diffs, requested, button };
+  return { container, inline, diffs, requested, button, setAvailable };
 }
 
 it.each([
   { available: undefined, shown: true },
   {
-    available: { sourceWindows: false, languageFeatures: false },
+    available: { sourceWindows: false },
     shown: false,
   },
 ])(
@@ -1431,6 +1437,26 @@ it.each([
   },
 );
 
+it("keeps the open peeks and Diff view when the host's source windows go away and return", async () => {
+  const on = { sourceWindows: true };
+
+  const { inline, diffs, button, setAvailable } = await mountPeekReview({
+    host: "devbox",
+    available: on,
+  });
+
+  await act(async () => button("Diff")!.click());
+  await act(async () => {
+    await vi.waitFor(() => expect(diffs).toHaveLength(1));
+  });
+
+  await setAvailable({ sourceWindows: false });
+  await setAvailable(on);
+
+  expect(inline).toHaveLength(1);
+  expect(diffs).toHaveLength(1);
+});
+
 it.each([
   { host: undefined, shown: true },
   { host: "devbox", shown: false },
@@ -1442,7 +1468,7 @@ it.each([
     const { button, requested } = await mountPeekReview({
       host,
       ...(host && {
-        available: { sourceWindows: false, languageFeatures: false },
+        available: { sourceWindows: false },
       }),
     });
 
