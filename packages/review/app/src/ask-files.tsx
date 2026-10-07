@@ -141,7 +141,8 @@ function AskFileLink({
   children: ReactNode;
 }): ReactNode {
   const files = useContext(AskFilesContext);
-  const canOpen = useReviewSession().review?.available?.sourceWindows !== false;
+  const available = useReviewSession().review?.available;
+  const canOpen = available?.sourceWindows !== false;
   const { path, line } = fileRef;
 
   useEffect(() => {
@@ -152,6 +153,9 @@ function AskFileLink({
   const tooltip = useTooltip<HTMLAnchorElement>(
     `Open ${file}${line ? `:${line}` : ""}`,
   );
+
+  if (!canOpen && available?.reason)
+    return <span title={available.reason}>{fallback}</span>;
 
   if (!canOpen || !files || !file) return fallback;
   const open = () => files.open(file, line);

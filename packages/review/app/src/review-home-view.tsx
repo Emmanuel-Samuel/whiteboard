@@ -43,7 +43,7 @@ import {
 } from "./icons";
 import { homeGroupMarker, homeRowMarker } from "./markers.stylex";
 import { useNotify } from "./notify";
-import { useRemoteHostState } from "./remote-host-state";
+import { useReviewHostDown } from "./remote-host-state";
 import type { ReviewFindHost } from "./review-find";
 import {
   HomeFilterPicker,
@@ -1063,13 +1063,7 @@ export function ReviewHome({
             </StatusBanner>
           ) : null}
           {error && <p role="alert">{error}</p>}
-          {waiting?.host && waiting.hostState ? (
-            <HostNotice
-              alias={waiting.host}
-              state={waiting.hostState}
-              hosts={remoteHosts}
-            />
-          ) : null}
+          {waiting ? <HostNotice review={waiting} hosts={remoteHosts} /> : null}
           {!visible.length && (
             <EmptyState
               message={
@@ -1551,17 +1545,21 @@ function hostStatus(review: ReviewApiSummary) {
 }
 
 function HostNotice({
-  alias,
-  state,
+  review,
   hosts,
 }: {
-  alias: string;
-  state: NonNullable<ReviewApiSummary["hostState"]>;
+  review: ReviewApiSummary;
   hosts?: ReviewRemoteHostActions;
 }) {
-  const live = useRemoteHostState(hosts, alias, true);
-  const status = reviewHostStatus(live ?? { alias, state });
-  const { failure, button } = useHostActionButton(hosts, alias, status.action);
+  const status = useReviewHostDown({ ...review, hosts });
+
+  const { failure, button } = useHostActionButton(
+    hosts,
+    review.host,
+    status?.action,
+  );
+
+  if (!status) return null;
 
   return (
     <p role="alert" {...stylex.props(styles.hostNotice)}>
