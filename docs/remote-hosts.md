@@ -56,9 +56,11 @@ never stored.
 
 ## How Desktop installs Whiteboard
 
-Desktop first checks the host and writes nothing. If the host lacks Desktop's
-version, Desktop asks once, then installs it as your user. The host downloads
-it from `install.dev.fast` and checks its pinned checksum before unpacking.
+Desktop first checks the host and writes nothing. If the host has no
+Whiteboard, Desktop asks once, then installs as your user. A host with another
+Whiteboard version gets Desktop's version without a question. The host
+downloads it from `install.dev.fast` and checks its pinned checksum before
+unpacking.
 
 You do not need to start anything. Desktop starts the review server when it
 connects. On a remote with no Desktop, `whiteboard api` starts one too, so an
@@ -88,7 +90,7 @@ not have its version:
 
 | Value | What Desktop does |
 |---|---|
-| `ask` (the default) | Asks once per host. |
+| `ask` (the default) | Asks once per host, unless the host already has a Whiteboard version. |
 | `always` | Installs without asking. |
 | `never` | Never installs, and uses the `whiteboard` on the host's `PATH`. |
 
