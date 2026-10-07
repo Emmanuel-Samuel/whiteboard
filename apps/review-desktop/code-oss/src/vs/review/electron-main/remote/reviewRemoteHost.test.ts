@@ -825,7 +825,6 @@ test("another version's CLI on PATH is updated without asking, even on a host th
 	assert.deepEqual([prompts.length, runs.length], [0, 1]);
 	assert.equal(last()?.declined, undefined);
 	assert.match(ssh.of("wb-test-a", "exec")[0].input!, /remote attach --json --replace/);
-	// Queued behind the attach's consent write, so it lands before cleanup.
 	assert.equal(await flow.consent.get("wb-test-a"), "deny");
 });
 

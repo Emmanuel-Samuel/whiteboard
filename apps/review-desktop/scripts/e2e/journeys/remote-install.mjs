@@ -501,7 +501,8 @@ async function targetOf(host, version) {
 }
 
 async function steps(ctx, until, watch, timings, manifestPath) {
-  const version = JSON.parse(await readFile(manifestPath, "utf8")).version;
+  // A dev Desktop stamps its checkout's state onto packages/review/package.json's version.
+  const { version } = await ctx.apiOk("/health");
 
   const fresh = alias("fresh");
   const first = await install(ctx, watch, fresh);
@@ -749,12 +750,13 @@ async function steps(ctx, until, watch, timings, manifestPath) {
 
   const oldFreshServer = await freshServer();
 
-  const next = version.replace(/\d+$/, (patch) => String(Number(patch) + 1));
   const manifest = await readFile(manifestPath, "utf8");
+  const current = JSON.parse(manifest).version;
+  const bumped = current.replace(/\d+$/, (patch) => String(Number(patch) + 1));
 
   await writeFile(
     manifestPath,
-    manifest.replace(`"version": "${version}"`, `"version": "${next}"`),
+    manifest.replace(`"version": "${current}"`, `"version": "${bumped}"`),
   );
 
   for (const target of REMOTE_TARGETS) await releases.stage(target);
@@ -769,7 +771,9 @@ async function steps(ctx, until, watch, timings, manifestPath) {
     30_000,
   );
 
-  assert.equal((await ctx.apiOk("/health")).version, next);
+  const { version: next } = await ctx.apiOk("/health");
+
+  assert.ok(next === bumped || next.startsWith(`${bumped}+dev.`), next);
 
   const upgraded = await until(
     () =>
@@ -797,7 +801,7 @@ async function steps(ctx, until, watch, timings, manifestPath) {
   assert.notEqual(newFreshServer.serverPid, oldFreshServer.serverPid);
   assert.match(
     await onRemote(fresh, `cat /proc/${newFreshServer.serverPid}/cmdline | tr '\\0' ' '`),
-    new RegExp(`/versions/${next.replaceAll(".", "\\.")}/`),
+    new RegExp(`/versions/${next.replace(/[.+]/g, "\\$&")}/`),
   );
   await homeRow(ctx, title);
   ctx.check(

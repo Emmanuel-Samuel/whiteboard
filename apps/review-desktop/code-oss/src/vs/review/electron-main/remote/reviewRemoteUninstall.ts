@@ -3,9 +3,9 @@
  *  Licensed under the MIT License. See LICENSE in the repository root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import * as semver from "../../../base/common/semver/semver.js";
 import { plainText } from "./reviewRemoteAgents.js";
 import { lastLine, runSsh, type SpawnSsh } from "./reviewRemoteHost.js";
-import { compareVersions } from "./reviewRemoteInstaller.js";
 import { REVIEW_REMOTE_INSTALL_MARKER, REVIEW_REMOTE_INSTALL_SAY, REVIEW_REMOTE_ROOT_SCRIPT, REVIEW_REMOTE_VERSION, shellQuote } from "./reviewRemoteInstallScript.js";
 import { sshExecArgs, type ReviewSshSession } from "./reviewSshCommand.js";
 
@@ -47,7 +47,7 @@ export async function uninstallRemote(input: {
 	if (!root?.startsWith("/")) throw failed("DEV_REVIEW_HOME there is not an absolute, normalised path.");
 	const newest = said("HAVE")
 		.filter((name) => REVIEW_REMOTE_VERSION.test(name))
-		.sort(compareVersions)
+		.sort(semver.compare)
 		.at(-1);
 	if (!newest) throw failed("Whiteboard Desktop installed nothing there.");
 

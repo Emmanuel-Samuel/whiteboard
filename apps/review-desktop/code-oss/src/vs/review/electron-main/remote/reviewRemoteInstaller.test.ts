@@ -14,7 +14,7 @@ import test from "node:test";
 import type { SpawnSsh } from "./reviewRemoteHost.js";
 import { probeRemote } from "./reviewRemoteProbe.js";
 import { uninstallRemote } from "./reviewRemoteUninstall.js";
-import { compareVersions, installRemote, type ReviewRemoteInstallInput, type ReviewRemoteInstallProgress } from "./reviewRemoteInstaller.js";
+import { installRemote, type ReviewRemoteInstallInput, type ReviewRemoteInstallProgress } from "./reviewRemoteInstaller.js";
 import { cleanupScript, lockScript, REVIEW_REMOTE_INSTALL_MARKER, REVIEW_REMOTE_WRAPPER_MARK, shellQuote } from "./reviewRemoteInstallScript.js";
 import type { ReviewRemoteProbe } from "./reviewRemoteProbe.js";
 import { reviewSshSession } from "./reviewSshCommand.js";
@@ -428,11 +428,6 @@ test("shellQuote survives quotes and refuses control characters", async () => {
 	}
 	assert.throws(() => shellQuote("a\nb"), /control character/);
 	assert.throws(() => shellQuote("a\u0007b"), /control character/);
-});
-
-test("versions order as semver", () => {
-	const sorted = ["0.1.10", "0.1.7", "0.1.7-preview.20261003.10", "0.1.6", "0.1.7-preview.20261003.2", "0.2.0-preview.1"].sort(compareVersions);
-	assert.deepEqual(sorted, ["0.1.6", "0.1.7-preview.20261003.2", "0.1.7-preview.20261003.10", "0.1.7", "0.1.10", "0.2.0-preview.1"]);
 });
 
 test("a lock taken over between the stealer's two reads is left to its new holder", async (t) => {

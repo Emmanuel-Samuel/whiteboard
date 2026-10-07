@@ -6,6 +6,8 @@
 import { randomBytes } from "node:crypto";
 import { hostname } from "node:os";
 
+import * as semver from "../../../base/common/semver/semver.js";
+
 import type { ReviewRemoteArtifact } from "./reviewRemoteArtifacts.js";
 import { lastLine, runSsh, type RunResult, type SpawnSsh, type SshChildProcess } from "./reviewRemoteHost.js";
 import {
@@ -169,7 +171,7 @@ export async function installRemote(input: ReviewRemoteInstallInput): Promise<Re
 		const dir = reviewRemoteVersionDir(probe.root, input.version);
 		const result = { nodePath: `${dir}/bin/node`, cliPath: `${dir}/dist/cli.js` };
 		const have = prepared.all("HAVE").filter((name) => REVIEW_REMOTE_VERSION.test(name));
-		const newest = [input.version, ...have].sort(compareVersions).at(-1);
+		const newest = [input.version, ...have].sort(semver.compare).at(-1);
 		const finished = await run(
 			"finishing",
 			finishScript(context, {
@@ -181,7 +183,7 @@ export async function installRemote(input: ReviewRemoteInstallInput): Promise<Re
 		if (!finished.has("COMPLETE")) throw finished.failure();
 
 		const keep = new Set([input.version, newest]);
-		const candidates = have.filter((name) => !keep.has(name)).sort(compareVersions).reverse();
+		const candidates = have.filter((name) => !keep.has(name)).sort(semver.rcompare);
 		if (candidates.length) {
 			await run("removing old versions", cleanupScript(context, { candidates, room: 2 - keep.size })).catch((error: unknown) => {
 				if (signal.aborted) throw error;
@@ -237,31 +239,6 @@ function parseVersion(text: string | undefined): string | undefined {
 	} catch {
 		return undefined;
 	}
-}
-
-export function compareVersions(a: string, b: string): number {
-	const [coreA, preA] = split(a);
-	const [coreB, preB] = split(b);
-	for (let i = 0; i < 3; i++) if (coreA[i] !== coreB[i]) return coreA[i] - coreB[i];
-	if (!preA.length || !preB.length) return preB.length - preA.length;
-	for (let i = 0; i < Math.max(preA.length, preB.length); i++) {
-		const x = preA[i];
-		const y = preB[i];
-		if (x === undefined || y === undefined) return x === undefined ? -1 : 1;
-		if (x === y) continue;
-		const nx = /^\d+$/.test(x);
-		const ny = /^\d+$/.test(y);
-		if (nx && ny) return Number(x) - Number(y);
-		if (nx !== ny) return nx ? -1 : 1;
-		return x < y ? -1 : 1;
-	}
-	return 0;
-}
-
-function split(version: string): [number[], string[]] {
-	const dash = version.indexOf("-");
-	const core = (dash < 0 ? version : version.slice(0, dash)).split(".").map(Number);
-	return [core, dash < 0 ? [] : version.slice(dash + 1).split(".")];
 }
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {
