@@ -4,7 +4,7 @@ import test from "node:test";
 import type { ReviewApiSummary } from "../../../common/reviewProtocol.js";
 import { remoteEntry, withRemoteEntry } from "./reviewRemoteEntry.js";
 
-const available = { sourceWindows: false, languageFeatures: false };
+const available = { sourceWindows: false };
 const entry = (host?: string) => ({ reviewId: "r1", title: "Remote", ...(host && { host, available }) }) as ReviewApiSummary;
 
 test("a review a remote opened before its list entry arrived takes the host once the entry does", () => {

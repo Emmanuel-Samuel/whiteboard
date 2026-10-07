@@ -6,6 +6,7 @@ import {
   REVIEW_HOST_HEADER,
   type ReviewGatewayHost,
   type ReviewGatewayHostState,
+  type ReviewRemoteNavigatorAnswer,
   parseJsonText,
 } from "@dev.fast/review-protocol";
 import { Hono } from "hono";
@@ -31,6 +32,7 @@ import {
   FIRST_BYTE_TIMEOUT_MS,
   errorCode,
   errorText,
+  readBody,
   remoteHeaders,
   send,
 } from "./review-gateway-transport.js";
@@ -67,6 +69,7 @@ const REMOTE_ROUTES: readonly RemoteRoute[] = [
   { method: "GET", path: "file" },
   { method: "GET", path: "resources/:name" },
   { method: "GET", path: "maps/:name" },
+  { method: "POST", path: "navigator" },
   { method: "POST", path: "copy-context" },
   { method: "GET", path: "language-context", slow: true },
   { method: "GET", path: "ask/agents" },
@@ -113,6 +116,23 @@ const DROPPED_REQUEST_HEADERS = new Set([
   REVIEW_CLIENT_HEADER,
   REVIEW_HOST_HEADER,
 ]);
+
+/** Absolute POSIX; a `:` before the first `/` (a scheme) is not absolute. */
+const hostPath = z
+  .string()
+  .refine((value) => value.startsWith("/") && value.isWellFormed());
+
+const remoteNavigator = z.object({
+  workspacePath: hostPath,
+  filePath: hostPath.optional(),
+  emptySide: z.literal(true).optional(),
+});
+
+const NAVIGATOR_MAX_BYTES = 1024 * 1024;
+
+/** VS Code's `URI.toString()` path encoding: unreserved characters and `/`
+ * stay, everything else is percent-encoded. */
+const URI_PATH_KEPT = /[A-Za-z0-9\-._~/]/;
 
 const commandTarget = z.object({
   operation: z.object({ reviewId: z.string().optional() }).optional(),
@@ -205,7 +225,7 @@ export function createReviewGateway(input: {
   function answer(
     alias: string,
     status: number,
-    body: { ok: boolean; error?: string },
+    body: { ok: boolean; error?: string } | ReviewRemoteNavigatorAnswer,
   ) {
     const response = serverJson(status, body);
     response.headers.set(REVIEW_HOST_HEADER, alias);
@@ -281,6 +301,30 @@ export function createReviewGateway(input: {
         out.set(key, Array.isArray(value) ? value.join(", ") : value);
 
     out.set(REVIEW_HOST_HEADER, remote.alias);
+
+    // A remote Source window opens the host's paths as vscode-remote URIs.
+    if (route?.path === "navigator" && status === 200) {
+      let uris: ReviewRemoteNavigatorAnswer | undefined;
+
+      try {
+        uris = navigatorUris(
+          await readBody(response.body, NAVIGATOR_MAX_BYTES),
+          remote.serverId,
+        );
+      } catch (error) {
+        return answer(remote.alias, 502, {
+          ok: false,
+          error: `${remote.alias} did not answer: ${errorText(error)}.`,
+        });
+      }
+
+      if (uris) return answer(remote.alias, 200, uris);
+
+      return answer(remote.alias, 502, {
+        ok: false,
+        error: `${remote.alias} answered with a path or server id that cannot be opened.`,
+      });
+    }
 
     if (request.method === "HEAD" || status === 204 || status === 304) {
       await response.body.dump();
@@ -430,3 +474,50 @@ export function createReviewGateway(input: {
 }
 
 export type ReviewGateway = ReturnType<typeof createReviewGateway>;
+
+/** The remote navigator's host paths as `vscode-remote` URIs on its
+ * `whiteboard+<serverId>` authority, as the fork's `reviewRemoteAuthority`
+ * names it. */
+function navigatorUris(
+  body: Buffer,
+  serverId: string | undefined,
+): ReviewRemoteNavigatorAnswer | undefined {
+  let value;
+
+  try {
+    value = parseJsonText(body.toString());
+  } catch {
+    return undefined;
+  }
+
+  const parsed = remoteNavigator.safeParse(value);
+
+  if (!parsed.success || !serverId || !/^[0-9a-z-]+$/i.test(serverId))
+    return undefined;
+  const { workspacePath, filePath, emptySide } = parsed.data;
+  const remoteAuthority = `whiteboard+${serverId.toLowerCase()}`;
+
+  const uri = (host: string) =>
+    `vscode-remote://${remoteAuthority}${uriPath(host)}`;
+
+  return {
+    workspaceUri: uri(workspacePath),
+    ...(filePath !== undefined && { fileUri: uri(filePath) }),
+    remoteAuthority,
+    ...(emptySide && { emptySide }),
+  };
+}
+
+function uriPath(value: string) {
+  let out = "";
+
+  for (const char of value)
+    out += URI_PATH_KEPT.test(char)
+      ? char
+      : encodeURIComponent(char).replace(
+          /[!'()*]/g,
+          (kept) => `%${kept.charCodeAt(0).toString(16).toUpperCase()}`,
+        );
+
+  return out;
+}

@@ -18,6 +18,7 @@ function decorate(
   hostState: NonNullable<ReviewApiSummary["hostState"]>,
 ): ReviewApiSummary {
   const { alias } = state;
+  const features = hostState === "online" && state.languageFeatures === true;
 
   return {
     ...entry,
@@ -29,11 +30,7 @@ function decorate(
     }),
     host: alias,
     hostState,
-    available: {
-      sourceWindows: false,
-      languageFeatures:
-        hostState === "online" && state.languageFeatures === true,
-    },
+    available: { sourceWindows: features },
   };
 }
 
