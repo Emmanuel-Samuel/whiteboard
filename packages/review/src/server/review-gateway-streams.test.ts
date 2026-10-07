@@ -186,7 +186,7 @@ it("lists this machine's reviews, then each host's in the setting's order, with 
     },
     host: "wb-a",
     hostState: "online",
-    available: { sourceWindows: false, languageFeatures: false },
+    available: { sourceWindows: false },
   });
 
   const onLocal = merged.find((review) => review.title === "On this machine")!;

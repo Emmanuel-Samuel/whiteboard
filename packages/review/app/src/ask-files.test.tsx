@@ -131,7 +131,6 @@ it("shows the files an answer names as text where Source windows are unavailable
 
   session.review!.available = {
     sourceWindows: false,
-    languageFeatures: false,
   };
 
   const entries: AgentEntry[] = [

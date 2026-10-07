@@ -1006,7 +1006,7 @@ function remote(
   return summary(title, {
     host: "devbox",
     hostState: "online",
-    available: { sourceWindows: false, languageFeatures: false },
+    available: { sourceWindows: false },
     ...extra,
   });
 }

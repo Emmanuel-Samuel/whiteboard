@@ -49,11 +49,15 @@ import { CommandsRegistry, ICommandService } from '../platform/commands/common/c
 import { IEditorService } from '../workbench/services/editor/common/editorService.js';
 import { NativeExtensionService } from '../workbench/services/extensions/electron-browser/nativeExtensionService.js';
 import { IExtensionService } from '../workbench/services/extensions/common/extensions.js';
+import { ReviewExtensionGalleryManifestService, ReviewExtensionManagementServerService } from './services/remote/reviewRemoteWindowExtensionManagement.js';
+import { IExtensionManagementServerService } from '../workbench/services/extensionManagement/common/extensionManagement.js';
+import { IExtensionGalleryManifestService } from '../platform/extensionManagement/common/extensionGalleryManifest.js';
 import { IRemoteAuthorityResolverService, type ResolverResult } from '../platform/remote/common/remoteAuthorityResolver.js';
 import { IMainProcessService } from '../platform/ipc/common/mainProcessService.js';
 import { REVIEW_DESKTOP_CHANNEL } from './common/reviewDesktopBootstrap.js';
 import { isReviewRemoteAuthority, reviewRemoteServerId } from './services/remote/reviewRemoteAuthority.js';
 import { reloadWhenOnline, reviewWindowAuthorityResolver, reviewWindowHosts } from './services/remote/reviewWindowAuthorityResolver.js';
+import { ReviewSourceWindowHostState } from './services/remote/reviewSourceWindowHostState.js';
 import { IHostService } from '../workbench/services/host/browser/host.js';
 import { FilesConfigurationService, IFilesConfigurationService } from '../workbench/services/filesConfiguration/common/filesConfigurationService.js';
 import type { IBaseFileStat } from '../platform/files/common/files.js';
@@ -72,6 +76,7 @@ class NavigatorDefaults {
 }
 
 registerWorkbenchContribution2('review.navigator.defaults', NavigatorDefaults, WorkbenchPhase.BlockStartup);
+registerWorkbenchContribution2(ReviewSourceWindowHostState.ID, ReviewSourceWindowHostState, WorkbenchPhase.BlockRestore);
 
 class NavigatorExtensionService extends NativeExtensionService {
 	private readonly windowHosts = this._instantiationService.invokeFunction((accessor) => reviewWindowHosts(accessor.get(IMainProcessService).getChannel(REVIEW_DESKTOP_CHANNEL)));
@@ -95,6 +100,8 @@ class NavigatorExtensionService extends NativeExtensionService {
 }
 
 registerSingleton(IExtensionService, NavigatorExtensionService, InstantiationType.Eager);
+registerSingleton(IExtensionManagementServerService, ReviewExtensionManagementServerService, InstantiationType.Delayed);
+registerSingleton(IExtensionGalleryManifestService, ReviewExtensionGalleryManifestService, InstantiationType.Eager);
 
 /** Every file in a Source window's folders is read-only, whatever a folder's settings say. */
 class NavigatorFilesConfigurationService extends FilesConfigurationService {

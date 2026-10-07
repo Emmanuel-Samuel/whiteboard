@@ -51,7 +51,7 @@ export interface ReviewApiSummary {
   working?: boolean;
   host?: string;
   hostState?: Exclude<ReviewGatewayHostState["state"], "duplicate">;
-  available?: { sourceWindows: boolean; languageFeatures: boolean };
+  available?: { sourceWindows: boolean };
 }
 
 /**

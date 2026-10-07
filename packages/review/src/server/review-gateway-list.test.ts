@@ -64,11 +64,10 @@ it("lists this machine first, then each machine in the setting's order", () => {
   ]);
   expect(merged[1]?.available).toEqual({
     sourceWindows: false,
-    languageFeatures: false,
   });
 });
 
-it("offers language features only for an online host whose Desktop reported them", () => {
+it("offers language features and Source windows only for an online host whose Desktop reported language features", () => {
   const merged = mergeLists(
     "structural",
     [],
@@ -83,12 +82,10 @@ it("offers language features only for an online host whose Desktop reported them
     ),
   );
 
-  expect(
-    merged.map((review) => [review.host, review.available?.languageFeatures]),
-  ).toEqual([
-    ["a", true],
-    ["b", false],
-    ["c", false],
+  expect(merged.map((review) => [review.host, review.available])).toEqual([
+    ["a", { sourceWindows: true }],
+    ["b", { sourceWindows: false }],
+    ["c", { sourceWindows: false }],
   ]);
 });
 
