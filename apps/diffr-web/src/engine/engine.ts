@@ -1,3 +1,5 @@
+import { isAndroid, isIOS } from "vs/base/common/platform.js";
+
 import { cacheKey } from "../cache.js";
 import { agentPlugins } from "../settings.js";
 /**
@@ -53,15 +55,49 @@ export interface EngineStats {
   diffMs: number;
 }
 
-const MAX_WORKERS = Math.max(
-  1,
-  Math.min(8, (navigator.hardwareConcurrency || 4) - 1),
-);
+declare global {
+  interface Navigator {
+    /** Chrome's: the device's memory in GB, rounded and capped at 8. Safari and Firefox lack it. */
+    readonly deviceMemory?: number;
+  }
+}
+
+const MB = 1024 * 1024;
+
+/**
+ * How many workers the pool grows to, and the wasm memory past which a worker is replaced once its
+ * queue drains. Each worker's memory never shrinks, so together they must fit what the browser
+ * lets the tab hold. iOS kills a tab over its budget (often well under 1 GB) rather than failing
+ * the allocation, and says nothing of its memory or cores, so it gets one lean worker.
+ */
+function workerBudget() {
+  const cores = Math.max(
+    1,
+    Math.min(8, (navigator.hardwareConcurrency || 4) - 1),
+  );
+
+  const { deviceMemory } = navigator;
+
+  if (isIOS) return { workers: 1, memoryLimit: 256 * MB };
+
+  if (isAndroid)
+    return {
+      workers:
+        deviceMemory !== undefined && deviceMemory >= 8
+          ? Math.min(2, cores)
+          : 1,
+      memoryLimit: 384 * MB,
+    };
+
+  if (deviceMemory !== undefined && deviceMemory < 8)
+    return { workers: Math.min(2, cores), memoryLimit: 512 * MB };
+
+  return { workers: cores, memoryLimit: 1024 * MB };
+}
+
+const { workers: MAX_WORKERS, memoryLimit: MEMORY_LIMIT } = workerBudget();
 
 const IDLE_MS = 3_000;
-
-/** Past this, a worker is replaced once its queue drains. */
-const MEMORY_LIMIT = 1024 * 1024 * 1024;
 
 const stats: EngineStats = {
   maxWorkers: MAX_WORKERS,
