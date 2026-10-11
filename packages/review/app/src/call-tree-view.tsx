@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { type CallTreeStop, callTreeStops } from "./call-tree";
 import { DiagramHeader } from "./diagram-header";
-import { compactDiffCount as compact, diffCountStyles } from "./diff-count";
+import { DiffCountHalves } from "./diff-count";
 import { drawStyles } from "./draw-styles";
 import { useReviewSession } from "./host/review-session";
 import { callEdgeMarker } from "./markers.stylex";
@@ -83,7 +83,11 @@ export function CallTree({
                 )}
                 data-review-anchor-id={stop.anchorId}
                 aria-current={stop.id === active ? "true" : undefined}
-                aria-label={`${stop.label}, ${change}`}
+                aria-label={
+                  change === "unchanged"
+                    ? stop.label
+                    : `${stop.label}, ${change}`
+                }
                 title={
                   unavailable
                     ? availability === "pending"
@@ -119,14 +123,10 @@ export function CallTree({
                     ) : stats.state === "folded" ? (
                       "Folded"
                     ) : (
-                      <>
-                        <span {...stylex.props(diffCountStyles.added)}>
-                          +{compact(stats.remaining.additions)}
-                        </span>
-                        <span {...stylex.props(diffCountStyles.removed)}>
-                          −{compact(stats.remaining.deletions)}
-                        </span>
-                      </>
+                      <DiffCountHalves
+                        additions={stats.remaining.additions}
+                        deletions={stats.remaining.deletions}
+                      />
                     )}
                   </span>
                 )}

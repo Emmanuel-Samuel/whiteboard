@@ -6,6 +6,7 @@ import path from "node:path";
 
 import type {
   ReviewCanvasBridge,
+  ReviewDiffFileWire,
   ReviewInlineEditorSpec,
   ReviewSurfaceEvent,
 } from "@dev.fast/review-protocol";
@@ -893,7 +894,11 @@ it("reads a worktree review's range as its base against the working tree, and a 
       "Committed work",
     );
 
-    expect(range(committed)).toContain("head c14db218");
+    expect(range(committed)).toBeUndefined();
+    expect(
+      committed.querySelector('[data-side="head"]')?.textContent,
+    ).toContain("c14db218");
+    expect(committed.querySelector('[data-side="base"]')).toBeNull();
     expect(committed.textContent).not.toContain("Working tree");
   } finally {
     await store.close();
@@ -973,7 +978,7 @@ it("offers to dismiss a review whose worktree is gone, without reading its diff"
     });
     await act(async () =>
       vi.waitFor(() =>
-        expect(container.textContent).toContain("Diff selection unavailable"),
+        expect(container.textContent).toContain("Code unavailable"),
       ),
     );
     await act(async () =>
@@ -1028,7 +1033,10 @@ it("offers the Diff view for a live worktree review and refreshes it on each sav
       context.json({ files: [], resolvedSelections: {}, lenses: [] }),
     );
     let progressReads = 0;
-    const files = vi.fn<() => Promise<never[]>>(async () => []);
+
+    const files = vi.fn<() => Promise<ReviewDiffFileWire[]>>(async () => [
+      { path: "a.ts", status: "modified" as const, additions: 1, deletions: 0 },
+    ]);
 
     const bridge = testReviewBridge(
       {},
