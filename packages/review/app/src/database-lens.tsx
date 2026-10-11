@@ -90,11 +90,21 @@ export interface ParsedOperation {
   source: DiffSelection;
 }
 
+/** A tour stop on the declaration of a table the use case touches. */
+export interface ParsedSchemaStop {
+  id: string;
+  label: string;
+  source: DiffSelection;
+  /** Every row of the table, so the whole table lights up. */
+  targetKeys: string[];
+}
+
 export interface ParsedUseCase {
   id: string;
   label: string;
   summary?: string;
   operations: ParsedOperation[];
+  schemas?: ParsedSchemaStop[];
 }
 
 export type ResolvedOperation = ParsedOperation;
@@ -195,6 +205,33 @@ export function lensUseCases(block: DatabaseLensProps): ParsedUseCase[] {
 
     if (useCase.summary !== undefined) parsed.summary = useCase.summary;
 
+    const schemas = new Map<string, ParsedSchemaStop>();
+
+    for (const operation of useCase.operations) {
+      const collection =
+        block.stores[operation.store]?.collections[operation.collection];
+
+      const key = `${operation.store}.${operation.collection}`;
+
+      if (!collection?.source || schemas.has(key)) continue;
+
+      const target = lensTarget(block.stores, {
+        store: operation.store,
+        collection: operation.collection,
+      });
+
+      schemas.set(key, {
+        id: `${block.id}:schema:${operation.store}:${operation.collection}`,
+        label: `${collection.label} schema`,
+        source: anchorSelection(collection.source, block.pins),
+        targetKeys: flattenSchemaRows(collection.fields).map((row) =>
+          targetKey(target, row.path),
+        ),
+      });
+    }
+
+    if (schemas.size) parsed.schemas = [...schemas.values()];
+
     return parsed;
   });
 }
@@ -268,15 +305,21 @@ export function databaseTourStopDetail({
 }
 
 export function DatabaseLens(block: DatabaseLensProps) {
-  const { id: lensId, title, actors, stores, height = 560 } = block;
+  const { id: lensId, title, actors, stores, pins, height = 560 } = block;
 
   // Memoize on the block's fields, not the props object: a live JSON snapshot
   // keeps its node references stable, so the tour entries and restored tour
   // state survive re-renders and edits elsewhere in the document.
   const useCases = useMemo(
     () =>
-      lensUseCases({ id: lensId, actors, stores, useCases: block.useCases }),
-    [lensId, actors, stores, block.useCases],
+      lensUseCases({
+        id: lensId,
+        actors,
+        stores,
+        pins,
+        useCases: block.useCases,
+      }),
+    [lensId, actors, stores, pins, block.useCases],
   );
 
   const session = useReviewSession();
@@ -324,19 +367,27 @@ export function DatabaseLens(block: DatabaseLensProps) {
       useCases.map((useCase) => ({
         id: tourIdFor(lensId, useCase.id),
         title: `${title ?? "Database lens"}: ${useCase.label}`,
-        stops: useCase.operations.map((operation) => ({
-          anchor: panelAnchor(operation),
-          label: operation.label,
-          detail: databaseTourStopDetail({
-            useCaseLabel: useCase.label,
-            operationLabel: operation.label,
-            anchorDetail: operation.detail,
-          }),
-          content: {
-            kind: "source" as const,
-            source: operation.source,
-          },
-        })),
+        stops: [
+          ...(useCase.schemas ?? []).map((schema) => ({
+            anchor: { id: schema.id, title: schema.label, peek: schema.source },
+            label: schema.label,
+            detail: `${useCase.label}: ${schema.label}`,
+            content: { kind: "source" as const, source: schema.source },
+          })),
+          ...useCase.operations.map((operation) => ({
+            anchor: panelAnchor(operation),
+            label: operation.label,
+            detail: databaseTourStopDetail({
+              useCaseLabel: useCase.label,
+              operationLabel: operation.label,
+              anchorDetail: operation.detail,
+            }),
+            content: {
+              kind: "source" as const,
+              source: operation.source,
+            },
+          })),
+        ],
       })),
     [lensId, title, useCases],
   );
@@ -365,7 +416,7 @@ export function DatabaseLens(block: DatabaseLensProps) {
 
   const openUseCase = (useCase: ParsedUseCase) => {
     setActiveUseCaseId(useCase.id);
-    const firstAnchor = useCase.operations[0]?.id;
+    const firstAnchor = tourForUseCase(useCase)?.stops[0]?.anchor.id;
 
     // Inline, the select only switches the diagram; with the tour open it
     // stays fullscreen and steps onto the new use case's tour.
@@ -395,14 +446,13 @@ export function DatabaseLens(block: DatabaseLensProps) {
         captureUiEvent(session, "peek_opened", { via: "db_lens" });
       }
 
-      const nextAnchor =
-        anchor ?? tourAnchor ?? activeUseCase?.operations[0]?.id;
+      const nextAnchor = anchor ?? tourAnchor ?? activeTour.stops[0]?.anchor.id;
 
       if (!nextAnchor) return;
 
       if (!tourOpen) {
         captureUiEvent(session, "tour_started", {
-          steps: activeUseCase?.operations.length ?? 0,
+          steps: activeTour.stops.length,
         });
       }
 
@@ -413,7 +463,7 @@ export function DatabaseLens(block: DatabaseLensProps) {
           nextAnchor,
         );
     },
-    [activeTour, activeUseCase, panelStore, session, tourAnchor, tourOpen],
+    [activeTour, panelStore, session, tourAnchor, tourOpen],
   );
 
   const { closeOverlayTour: closeTour, moveOverlayTour: changeTourAnchor } =
@@ -460,6 +510,7 @@ export function DatabaseLens(block: DatabaseLensProps) {
             <button
               type="button"
               {...withClass("diagram-tour-button", diagramStyles.control)}
+              data-tour-target="diagram-tour"
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -539,11 +590,20 @@ function DatabaseUseCaseDiagram({
 }) {
   const resolvedOperations = useCase.operations;
 
+  // Operations come first, so the inline diagram still opens on one.
   const highlights = selectDatabaseOperationHighlights(
-    resolvedOperations.map((resolved) => ({
-      anchorId: resolved.id,
-      targetKey: targetKey(resolved.target, resolved.target.path),
-    })),
+    [
+      ...resolvedOperations.map((resolved) => ({
+        anchorId: resolved.id,
+        targetKey: targetKey(resolved.target, resolved.target.path),
+      })),
+      ...(useCase.schemas ?? []).flatMap((schema) =>
+        schema.targetKeys.map((key) => ({
+          anchorId: schema.id,
+          targetKey: key,
+        })),
+      ),
+    ],
     activeAnchor,
   );
 

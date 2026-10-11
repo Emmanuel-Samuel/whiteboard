@@ -4,8 +4,8 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { DocumentCodeView } from "./DocumentCodeView";
+import { INLINE_HOVER_EVENT } from "./inline-hover-event";
 import { ReviewFindProvider, createReviewFindHost } from "./review-find";
-import { REVIEW_INTERACTION_EVENT } from "./review-interaction-event";
 import { type ReviewRoots, ReviewRootsProvider } from "./review-root-context";
 import {
   reviewSessionElement,
@@ -386,7 +386,7 @@ it("mounts eagerly when IntersectionObserver is unavailable", () => {
   expect(created).toHaveLength(1);
 });
 
-it("emits neutral hover and navigation interactions without remounting", () => {
+it("emits a neutral hover interaction without remounting", () => {
   let disposed = 0;
 
   const session = testReviewSession(
@@ -423,9 +423,9 @@ it("emits neutral hover and navigation interactions without remounting", () => {
   const element = document.createElement("div");
   document.body.append(element);
   root = createRoot(element);
-  const interactions: unknown[] = [];
-  element.addEventListener(REVIEW_INTERACTION_EVENT, (event) => {
-    interactions.push((event as CustomEvent).detail);
+  let hovers = 0;
+  element.addEventListener(INLINE_HOVER_EVENT, () => {
+    hovers += 1;
   });
   act(() => {
     root?.render(
@@ -443,15 +443,9 @@ it("emits neutral hover and navigation interactions without remounting", () => {
     );
   });
   expect(created).toHaveLength(1);
-  const { onDidNavigate, onDidShowHover } = created[0]!;
-  act(() => {
-    onDidShowHover?.();
-    onDidNavigate?.();
-  });
-  expect(interactions).toEqual([
-    { kind: "inline-hover", path: "src/example.ts" },
-    { kind: "inline-navigation", path: "src/example.ts" },
-  ]);
+  const { onDidShowHover } = created[0]!;
+  act(() => onDidShowHover?.());
+  expect(hovers).toBe(1);
   expect(created).toHaveLength(1);
   expect(disposed).toBe(0);
 });

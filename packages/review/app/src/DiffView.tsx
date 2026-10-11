@@ -51,6 +51,7 @@ import {
 } from "./side-panel-resizer";
 import { withClass } from "./stylex-props";
 import { tokens } from "./tokens.stylex";
+import { useTutorial } from "./tutorial-context";
 import { ProgressRing } from "./ui/progress-ring";
 import { useTooltip } from "./use-tooltip";
 import { ViewedButton } from "./viewed-button";
@@ -173,6 +174,8 @@ export function ReviewDiffView({
   });
 
   const lenses = useReviewLenses();
+  // The courier would nudge the lens the tour rings.
+  const tutorial = useTutorial();
   const diffFiles = useReviewDiffFiles();
   const lens = scope ? undefined : lenses?.active;
   const [lensList, setLensList] = useState<HTMLDivElement | null>(null);
@@ -370,6 +373,7 @@ export function ReviewDiffView({
                         stats.state === "viewed" && !selected && styles.faded,
                       )}
                       aria-pressed={selected}
+                      data-tour-target="lens"
                       disabled={!!item.unavailable || (empty && !selected)}
                       onClick={() =>
                         selected ? lenses.clear() : lenses.select(item.id)
@@ -383,6 +387,7 @@ export function ReviewDiffView({
                           styles.chip,
                           selected && styles.chipActive,
                         )}
+                        data-tour-target="lens-chip"
                         title={
                           item.unavailable ??
                           (selected ? "Clear lens filter" : undefined)
@@ -447,11 +452,13 @@ export function ReviewDiffView({
                 </section>
               );
             })}
-            <Courier
-              scope="lenses"
-              container={lensList}
-              find={lensRowElement}
-            />
+            {!tutorial && (
+              <Courier
+                scope="lenses"
+                container={lensList}
+                find={lensRowElement}
+              />
+            )}
           </div>
           <div
             {...cabinetsResize.separatorProps}

@@ -1,4 +1,5 @@
 import { IHoverService } from "../../platform/hover/browser/hover.js";
+import { ContentHoverController } from "../../editor/contrib/hover/browser/contentHoverController.js";
 import { orderReviewDiffFiles } from "../common/reviewChangedFilesModel.js";
 import { CancellationToken } from "../../base/common/cancellation.js";
 import { Range } from "../../editor/common/core/range.js";
@@ -133,7 +134,7 @@ export class ReviewDiffViewService extends Disposable {
 			document: {
 				heightMode: spec.heightMode,
 				onDidChangeHeight: value => { height = value; heightChanged.fire(value); },
-				onDidFocus: spec.onDidFocus, onDidOpen: spec.onDidOpen,
+				onDidFocus: spec.onDidFocus, onDidOpen: spec.onDidOpen, onDidShowHover: spec.onDidShowHover,
 			},
 		}, source) as DiffViewController;
 		lifetime.add(view);
@@ -321,7 +322,7 @@ class DiffViewController extends Disposable implements ReviewDiffViewHandle {
 				const byFile = new Map(selected.map(entry => [entry.file, entry]));
 				selected = orderReviewDiffFiles([...byFile.keys()]).map(file => byFile.get(file)!);
 			}
-			const instantiation = withLens(structural.instantiation, selected, lens, store, () => this.progress, this.progressChanged.event, !!viewed);
+			const instantiation = withLens(structural.instantiation, selected, lens, store, () => this.progress, this.progressChanged.event, !!viewed, !!this.spec.document);
 			// The input owns the text-model references its view model resolves, so
 			// this handle disposes it alongside the view.
 			const input = store.add(instantiation.createInstance(ReviewFilesEditorInput, sourceUri, selected,
@@ -398,6 +399,12 @@ class DiffViewController extends Disposable implements ReviewDiffViewHandle {
 			this.activeControlStore.add(
 				editor.onDidFocusEditorText(() => { this.inlineEditors.setExternalActiveEditor(editor); this.spec.document?.onDidFocus?.(); }),
 			);
+			const hover = this.spec.document?.onDidShowHover && ContentHoverController.get(editor);
+			if (hover) {
+				this.activeControlStore.add(hover.onHoverContentsChanged(() => {
+					if (hover.getWidgetContent()?.trim()) this.spec.document?.onDidShowHover?.();
+				}));
+			}
 		}
 		this.decorateMatches(this.matches, this.activeMatch);
 	}

@@ -1,17 +1,16 @@
 import type { TutorialStepId } from "@dev.fast/review-protocol";
 
-export type TutorialChapterId =
-  | "welcome"
-  | "commits"
-  | "diagrams"
-  | "traces"
-  | "finish";
+import type { OverlayTourKind } from "./review-panel-store";
+
+export type TutorialChapterId = "welcome" | "diffs" | "diagrams" | "finish";
 
 export type TutorialStepCompletion =
   | "external"
   | "click"
   | "inline-hover"
-  | "inline-navigation"
+  | "tour-open"
+  | "tour-advance"
+  | "tour-close"
   | "finish";
 
 export interface TutorialChapterDefinition {
@@ -25,19 +24,54 @@ export interface TutorialStepDefinition {
   title: string;
   instruction: string;
   completion: TutorialStepCompletion;
+  /** The fullscreen tour a tour step watches. */
+  tour?: OverlayTourKind;
   targetSelector: string;
-  requiresSoftwareMap?: boolean;
+  /** What gets the ring, when not the target; the topmost visible match. */
+  highlightSelector?: string;
 }
+
+const target = (name: string) => `[data-tour-target="${name}"]`;
+
+/**
+ * Everything the tour looks for. Targets carry a `data-tour-target` name set by
+ * the component that renders them. Folds and the containers a step searches
+ * within keep their own class names.
+ */
+export const TUTORIAL_TARGETS = {
+  keymapPicker: target("keymap-picker"),
+  welcomeEditor: `[data-review-section="Welcome"] ${target("code-editor")}`,
+  diffTab: target("diff-tab"),
+  /** The Whiteboard tab shows the "review" view. */
+  whiteboardTab: target("review-tab"),
+  diffButton: target("open-diff"),
+  lens: `${target("lens")}:not(:disabled)`,
+  lensChip: `${target("lens")}:not(:disabled) ${target("lens-chip")}`,
+  /** Folded code in a diff. */
+  fold: ".review-fold-pill, .diff-fold-reveal",
+  modifiedFold:
+    ".modified-in-monaco-diff-editor :is(.diff-fold-reveal, .review-fold-pill)",
+  sequenceTour: `[data-review-section="Interactive diagrams"] .sequence-diagram ${target("diagram-tour")}`,
+  databaseTour: `[data-review-section="Interactive diagrams"] .database-lens ${target("diagram-tour")}`,
+  /** The fullscreen diagram tour. */
+  tourOverlay: ".diagram-tour-overlay",
+  tourNext: `.diagram-tour-overlay ${target("tour-next")}`,
+  tourClose: `.diagram-tour-overlay ${target("tour-close")}`,
+  finishSection: `[data-review-section="You're all done"] ${target("section-body")}`,
+  /** The view's scrolling region. */
+  viewRegion: ".review-view-region",
+} as const;
+
+const T = TUTORIAL_TARGETS;
 
 export const TUTORIAL_CHAPTERS: readonly TutorialChapterDefinition[] = [
   { id: "welcome", title: "Welcome" },
-  { id: "commits", title: "Commits and diffs" },
-  { id: "diagrams", title: "Interactive Diagrams" },
-  { id: "traces", title: "Agent traces" },
-  { id: "finish", title: "Get help" },
+  { id: "diffs", title: "Diffs and lenses" },
+  { id: "diagrams", title: "Interactive diagrams" },
+  { id: "finish", title: "You're all done" },
 ];
 
-const tutorialSteps: readonly TutorialStepDefinition[] = [
+export const TUTORIAL_STEPS: readonly TutorialStepDefinition[] = [
   {
     id: "chooseKeymap",
     chapter: "welcome",
@@ -45,76 +79,71 @@ const tutorialSteps: readonly TutorialStepDefinition[] = [
     instruction:
       "Choose the editor keys you want to use while reading sessions.",
     completion: "external",
-    targetSelector: ".tutorial-keymap-picker",
+    targetSelector: T.keymapPicker,
   },
   {
     id: "showHover",
     chapter: "welcome",
     title: "Inspect a symbol",
     instruction:
-      "Move the pointer over a typed symbol in the live editor to see its type information.",
+      "Hover a symbol in the live editor to see its type. Go to Definition works with your usual keys too.",
     completion: "inline-hover",
-    targetSelector:
-      '[data-review-section="Welcome"] [data-review-inline-editor]',
-  },
-  {
-    id: "gotoDefinition",
-    chapter: "welcome",
-    title: "Navigate the code",
-    instruction:
-      "Use Go to Definition on a symbol—the same command you use in your editor.",
-    completion: "inline-navigation",
-    targetSelector:
-      '[data-review-section="Welcome"] [data-review-inline-editor]',
-  },
-  {
-    id: "openPeek",
-    chapter: "welcome",
-    title: "Follow the prose",
-    instruction:
-      "Select the order creation path in the prose to open its focused code.",
-    completion: "click",
-    targetSelector: '[data-review-section="Welcome"] a[data-review-anchor-id]',
-  },
-  {
-    id: "openCommits",
-    chapter: "commits",
-    title: "Inspect the commits",
-    instruction:
-      "Open Commits to see how the change was built in author order.",
-    completion: "click",
-    targetSelector:
-      'button[aria-label="Commits"], .tutorial-view-button[data-tutorial-view="commits"]',
+    targetSelector: T.welcomeEditor,
   },
   {
     id: "openDiff",
-    chapter: "commits",
-    title: "Open a focused diff",
+    chapter: "diffs",
+    title: "Open the diff",
     instruction:
-      "Open the sample commit's diff to inspect only the change it introduced.",
+      "Open Diff to see the whole change, with unchanged structure folded away.",
     completion: "click",
-    targetSelector: ".review-commit-open",
+    targetSelector: `${T.diffTab}, ${T.diffButton}`,
+    highlightSelector: T.diffTab,
+  },
+  {
+    id: "selectLens",
+    chapter: "diffs",
+    title: "Filter with a lens",
+    instruction: "Select a lens to filter the diff to just that part.",
+    completion: "click",
+    targetSelector: T.lens,
+    highlightSelector: T.lensChip,
+  },
+  {
+    id: "expandFold",
+    chapter: "diffs",
+    title: "Expand a fold",
+    instruction: "Select a folded region to reveal the code diffr hid.",
+    completion: "click",
+    targetSelector: T.fold,
+    highlightSelector: T.modifiedFold,
+  },
+  {
+    id: "backToWhiteboard",
+    chapter: "diffs",
+    title: "Go back to the whiteboard",
+    instruction: "Select Whiteboard to return to the document.",
+    completion: "click",
+    targetSelector: T.whiteboardTab,
   },
   {
     id: "openSequence",
     chapter: "diagrams",
     title: "Walk the sequence",
     instruction:
-      "Open the sequence Tour, then select its messages to follow the supporting code.",
-    completion: "external",
-    targetSelector:
-      '[data-review-section="Interactive Diagrams"] .sequence-diagram .diagram-tour-button',
+      "Open the sequence Tour, then step to the next message to follow its code.",
+    completion: "tour-advance",
+    tour: "sequence",
+    targetSelector: `${T.sequenceTour}, ${T.tourNext}`,
   },
   {
-    id: "openMap",
+    id: "closeSequence",
     chapter: "diagrams",
-    title: "Explore the software map",
-    instruction:
-      "Open Map to move from the sample system to its components and code.",
-    completion: "click",
-    targetSelector:
-      'button[aria-label="Map (Experimental)"], .tutorial-view-button[data-tutorial-view="map"]',
-    requiresSoftwareMap: true,
+    title: "Close the tour",
+    instruction: "Close the tour to return to the document.",
+    completion: "tour-close",
+    tour: "sequence",
+    targetSelector: T.tourClose,
   },
   {
     id: "openDatabase",
@@ -122,37 +151,20 @@ const tutorialSteps: readonly TutorialStepDefinition[] = [
     title: "Inspect the database flow",
     instruction:
       "Open the database Tour to follow the order write from the service into storage.",
-    completion: "external",
-    targetSelector:
-      '[data-review-section="Interactive Diagrams"] .database-lens .diagram-tour-button',
-  },
-  {
-    id: "openTraceQuote",
-    chapter: "traces",
-    title: "Read the agent conversation",
-    instruction:
-      "Select the trace quote to read it in context. Enable capture for your own sessions in Settings → Experimental Features → Trace capture.",
-    completion: "click",
-    targetSelector: '[data-review-section="Agent traces"] a[href^="#trace-"]',
+    completion: "tour-open",
+    tour: "database",
+    targetSelector: T.databaseTour,
   },
   {
     id: "getHelp",
     chapter: "finish",
-    title: "Know where to get help",
+    title: "Tour complete!",
     instruction:
-      "Use Settings to connect your agents, or Getting Started to revisit setup and this tour.",
+      "We hope you enjoy Whiteboard :), let us know what you think on GH or Discord.",
     completion: "finish",
-    targetSelector: '[data-review-section="Get help"] .review-section-body',
+    targetSelector: T.finishSection,
   },
 ];
-
-export function availableTutorialSteps(
-  softwareMapEnabled: boolean,
-): readonly TutorialStepDefinition[] {
-  return tutorialSteps.filter(
-    (step) => !step.requiresSoftwareMap || softwareMapEnabled,
-  );
-}
 
 export function tutorialChapter(
   id: TutorialChapterId,
