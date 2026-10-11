@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { type FSWatcher, existsSync, watch } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -30,6 +30,11 @@ import type {
   StructuralDiffEvent,
 } from "@dev.fast/review-protocol";
 import { writePrivateJsonAtomic } from "@dev.fast/trace-core";
+import type {
+  AsyncSubscription,
+  Event as WatcherEvent,
+  subscribe,
+} from "@parcel/watcher";
 import { textIncludesQuote } from "@review/evidence.js";
 import { isMissingFileError } from "@review/fs-utils.js";
 import { reviewManagedCheckoutRoot } from "@review/review-checkout-paths.js";
@@ -88,8 +93,11 @@ import {
 import { traceSchema } from "./trace-schema.js";
 import { ReviewWorkspaces } from "./workspaces.js";
 import {
+  INERT_GIT_PATHS,
+  atTrackedEdge,
   gitDirectoryPrefix,
   gitEventMatters,
+  ignoredDirectories,
   rootEventMatters,
   trackedDirectories,
 } from "./worktree-events.js";
@@ -569,7 +577,7 @@ export class LocalReviewData {
       blobReaderIdleTimeoutMs?: number;
       workspaceDatabase?: string;
       manageWorkspaces?: boolean;
-      watch?: typeof watch;
+      subscribe?: typeof subscribe;
       /** gh, git and GitHub API access for pull request targets. */
       pullRequests?: PullRequestDeps;
     } = {},
@@ -640,10 +648,12 @@ export class LocalReviewData {
     {
       epoch: number;
       inspectedEpoch: number;
-      watchers: FSWatcher[];
+      subscriptions: Map<string, AsyncSubscription>;
       healthy: boolean;
       inspection?: Omit<Awaited<ReturnType<typeof inspectWorktree>>, "files">;
       tracked?: Set<string>;
+      /** Rereads ignored directories after one may have appeared. */
+      ignoring?: NodeJS.Timeout;
       /** Fork points by base ref, valid for the inspected epoch. */
       forks: Map<string, Promise<{ ref: string; commit: string }>>;
     }
@@ -652,7 +662,7 @@ export class LocalReviewData {
   private forgetWorktree(repositoryId: string) {
     const entry = this.worktrees.get(repositoryId);
 
-    if (entry) for (const watcher of entry.watchers) watcher.close();
+    if (entry) void unwatch(entry);
     this.worktrees.delete(repositoryId);
   }
 
@@ -663,12 +673,13 @@ export class LocalReviewData {
       entry = {
         epoch: 0,
         inspectedEpoch: -1,
-        watchers: [],
+        subscriptions: new Map(),
         healthy: true,
         forks: new Map(),
       };
       this.worktrees.set(repositoryId, entry);
       const state = entry;
+      const current = () => this.worktrees.get(repositoryId) === state;
       const common = await gitCommonDir(vcs.rootPath);
 
       // jj snapshots untracked files, so every event can matter there.
@@ -677,49 +688,113 @@ export class LocalReviewData {
           ? await gitDirectoryPrefix(vcs.rootPath, common)
           : null;
 
-      const roots = new Map([
-        [
-          vcs.rootPath,
-          (name: string) =>
-            prefix === null || rootEventMatters(name, state.tracked),
-        ],
-      ]);
-
-      if (common)
-        roots.set(
-          common,
-          (name) => prefix === null || gitEventMatters(name, prefix),
-        );
-
-      for (const [root, matters] of roots) {
+      // Linux watches each directory, so skip what cannot matter.
+      const watch = async (
+        root: string,
+        ignore: string[],
+        matters: (name: string, event: WatcherEvent) => boolean,
+      ) => {
         try {
-          const watcher = (this.options.watch ?? watch)(
+          const subscription = await (
+            this.options.subscribe ??
+            (await import("@parcel/watcher")).subscribe
+          )(
             root,
-            { recursive: true },
-            (_event, name) => {
-              if (name === null || matters(String(name))) state.epoch++;
+            (error, events) => {
+              if (error) {
+                state.healthy = false;
+                const failed = state.subscriptions.get(root);
+
+                if (failed) void release(failed);
+                state.subscriptions.delete(root);
+              } else if (
+                // Every event, since matters also notices new ignored directories.
+                events
+                  .map((event) =>
+                    matters(path.relative(root, event.path), event),
+                  )
+                  .includes(true)
+              )
+                state.epoch++;
             },
+            { ignore },
           );
 
-          watcher.on("error", () => {
-            state.epoch++;
-            state.inspectedEpoch = -1;
-            state.healthy = false;
-            watcher.close();
-          });
-          watcher.unref();
-          state.watchers.push(watcher);
+          if (!current()) return void release(subscription);
+          const previous = state.subscriptions.get(root);
+
+          state.subscriptions.set(root, subscription);
+
+          if (previous) void release(previous);
         } catch {
           state.healthy = false;
         }
-      }
+      };
+
+      const rootIgnore = async () =>
+        [
+          ...(common ? [".git"] : []),
+          ...(await ignoredDirectories(
+            vcs.rootPath,
+            vcs.kind === "jj" ? (common ?? undefined) : undefined,
+          )),
+        ].map((directory) => path.join(vcs.rootPath, directory));
+
+      let ignored = await rootIgnore();
+
+      const refreshIgnored = () => {
+        clearTimeout(state.ignoring);
+        state.ignoring = setTimeout(async () => {
+          const next = await rootIgnore();
+
+          if (!current() || next.join("\0") === ignored.join("\0")) return;
+          ignored = next;
+
+          // Parcel keeps watches an overlapping subscription shares, so
+          // unsubscribe first and treat the gap as a change.
+          const previous = state.subscriptions.get(vcs.rootPath);
+
+          state.subscriptions.delete(vcs.rootPath);
+
+          if (previous) await release(previous);
+          await watch(vcs.rootPath, ignored, rootMatters);
+          state.epoch++;
+        }, 1000);
+        state.ignoring.unref();
+      };
+
+      const rootMatters = (name: string, event: WatcherEvent) => {
+        if (
+          path.basename(name) === ".gitignore" ||
+          (event.type === "create" &&
+            atTrackedEdge(name, state.tracked) &&
+            statSync(event.path, { throwIfNoEntry: false })?.isDirectory())
+        )
+          refreshIgnored();
+
+        return prefix === null || rootEventMatters(name, state.tracked);
+      };
+
+      await Promise.all([
+        watch(vcs.rootPath, ignored, rootMatters),
+        common &&
+          watch(
+            common,
+            INERT_GIT_PATHS.map((directory) => path.join(common, directory)),
+            (name) => {
+              if (name === path.join("info", "exclude")) refreshIgnored();
+
+              return prefix === null || gitEventMatters(name, prefix);
+            },
+          ),
+      ]);
     }
 
     if (
       entry.inspection &&
       entry.inspectedEpoch === entry.epoch &&
       entry.healthy &&
-      entry.watchers.length
+      entry.subscriptions.size
     )
       return { ...entry.inspection, forks: entry.forks };
 
@@ -742,8 +817,7 @@ export class LocalReviewData {
     this.closed = true;
     await this.workspaceManager?.close();
 
-    for (const entry of this.worktrees.values())
-      for (const watcher of entry.watchers) watcher.close();
+    await Promise.all([...this.worktrees.values()].map(unwatch));
     this.worktrees.clear();
     const readers = [...this.readers.values()];
 
@@ -1809,12 +1883,27 @@ function inputError<T>(run: () => T): T {
   }
 }
 
+async function unwatch(entry: {
+  subscriptions: Map<string, AsyncSubscription>;
+  ignoring?: NodeJS.Timeout;
+}) {
+  clearTimeout(entry.ignoring);
+  const subscriptions = [...entry.subscriptions.values()];
+
+  entry.subscriptions.clear();
+  await Promise.all(subscriptions.map(release));
+}
+
+/** Linux fails to unwatch a directory that is already gone. */
+const release = (subscription: AsyncSubscription) =>
+  subscription.unsubscribe().catch(() => {});
+
 export function openLocalReviewStore(
   databasePath: string,
   options: {
     blobReaderIdleTimeoutMs?: number;
     manageWorkspaces?: boolean;
-    watch?: typeof watch;
+    subscribe?: typeof subscribe;
     pullRequests?: PullRequestDeps;
   } = {},
 ) {
