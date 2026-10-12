@@ -39,6 +39,7 @@ import {
 } from "./review/common/reviewStructuralDiff.js";
 import type { ReviewDiffLayoutSetting } from "./review/services/reviewDiffLayout.js";
 import { StructuralDiffSession } from "./review/services/reviewStructuralDiffSession.js";
+import { StructuralViewedState } from "./review/services/reviewStructuralViewed.js";
 import { ViewedProgress } from "./viewed.js";
 
 /** Files fetched or diffed at once. The engine spreads them over its workers. */
@@ -548,11 +549,22 @@ export class Comparison extends Disposable {
       new ViewedProgress(targetPath(this.target)),
     ));
 
+    const scopes = store.add(
+      new StructuralViewedState(
+        session,
+        entries,
+        () => viewed.progress,
+        viewed.onDidChange,
+        (ranges, isViewed) => viewed.setViewed(ranges, isViewed),
+      ),
+    );
+
     const view = store.add(
       new DiffView(
         this.container,
         session,
         (path) => void viewed.toggleFile(path),
+        scopes,
         this.wordWrap,
         this.layout,
         this.instantiation,

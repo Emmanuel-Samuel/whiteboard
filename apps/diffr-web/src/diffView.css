@@ -355,6 +355,27 @@
   overflow-wrap: anywhere;
 }
 
+/* diffView.ts sets --dv-hang to the line's indentation; the first line keeps its own. */
+.is-wrapped .dv-code {
+  padding-left: calc(8px + var(--dv-hang, 0ch));
+  text-indent: calc(-1 * var(--dv-hang, 0ch));
+}
+
+/* An inline block takes the indent as its own first line's. */
+.is-wrapped .dv-code * {
+  text-indent: 0;
+}
+
+/* A wrapped line's number and chevron stay beside its first line. */
+.is-wrapped .dv-gutter {
+  align-items: flex-start;
+}
+
+.is-wrapped .dv-chevron {
+  bottom: auto;
+  height: var(--dv-line);
+}
+
 .dv-changed {
   border-radius: 2px;
 }
@@ -710,4 +731,78 @@
 
 .dv:not(.is-compact) .dv-pill {
   font-size: 11px;
+}
+
+/* A phone pinches to fold, so the page never zooms under the diff. */
+.dv.is-compact {
+  touch-action: pan-x pan-y;
+}
+
+/* Rails are drawn in the block, pane or grid that holds their rows. */
+.dv-chunk,
+.dv-pane-rows,
+.dv-seg.is-grid {
+  position: relative;
+}
+
+/* Viewed lines read as done. */
+.dv-row.is-viewed > .dv-code {
+  opacity: 0.55;
+}
+
+.dv-pill.is-viewed {
+  color: var(--vscode-gitDecoration-addedResourceForeground);
+}
+
+/* The scope under the pointer: its chevron, and a rail down its body that folds it. */
+.dv-row.is-scope-head .dv-chevron {
+  color: var(--vscode-textLink-foreground);
+}
+
+.dv-rail {
+  position: absolute;
+  width: 9px;
+  margin-left: -4px;
+  cursor: pointer;
+}
+
+.dv-rail::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 4px;
+  width: 1px;
+  background: var(--vscode-textLink-foreground);
+  opacity: 0.6;
+}
+
+.dv-rail:hover::before {
+  left: 3px;
+  width: 3px;
+  opacity: 1;
+}
+
+/* A scope's changes left to read and its viewed box, at the row's trailing edge. */
+.dv-scope {
+  position: sticky;
+  right: 0;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 12px;
+  font:
+    11px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-editor-background);
+}
+
+.dv-scope-added {
+  color: var(--vscode-gitDecoration-addedResourceForeground);
+}
+
+.dv-scope-removed {
+  color: var(--vscode-gitDecoration-deletedResourceForeground);
 }
