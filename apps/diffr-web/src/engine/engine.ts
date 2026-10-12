@@ -7,8 +7,8 @@ import { agentPlugins } from "../settings.js";
  * of workers, so files diff in parallel without each worker paying for its own compile. The pool
  * starts at one and grows while work queues, a worker at a time: each spends a second or two
  * compiling diffr's queries, and workers starting together slow each other several times over.
- * Every worker goes after a few idle seconds, since wasm memory never shrinks: the compiled module
- * stays, so the next file's worker starts in tens of milliseconds.
+ * Every worker goes after a few idle seconds, since wasm memory never shrinks, and the compiled
+ * module with the last of them: compiling again costs the next file well under a tenth of a second.
  */
 // Gzipped by the build (vite.config.ts): static hosts cap a file at 25 MiB, and the engine is larger.
 import wasmUrl from "../wasm/diffr_web_bg.wasm.gz?url";
@@ -343,6 +343,8 @@ export class Engine {
         }
       }
 
+      // Each worker holds the module it was sent, so with none left the page holds the last.
+      if (!stats.workers) compiled = undefined;
       changed();
     }, IDLE_MS);
   }
