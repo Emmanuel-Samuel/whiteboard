@@ -1,15 +1,15 @@
-/* The phone's diff (mobileDiff.ts): plain rows the browser scrolls and selects. Every fold control
+/* The phone's diff (diffView.ts): plain rows the browser scrolls and selects. Every fold control
    is at least a row tall and the gutter wide; bands and file headers are 44px, a thumb's width. */
 
-.mdiff {
-  --mdiff-line: 22px;
-  --mdiff-font: "Geist Mono", ui-monospace, Menlo, monospace;
+.dv {
+  --dv-line: 22px;
+  --dv-font: "Geist Mono", ui-monospace, Menlo, monospace;
   position: relative;
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior-y: contain;
-  /* mobileDiff.ts keeps the reader's row in place itself, in every browser. */
+  /* diffView.ts keeps the reader's row in place itself, in every browser. */
   overflow-anchor: none;
   -webkit-text-size-adjust: 100%;
   outline: none;
@@ -18,21 +18,61 @@
   box-sizing: border-box;
 }
 
-.mdiff-status {
+.dv-host {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+.dv-host > .dv {
+  flex: 1;
+  min-width: 0;
+}
+
+.dv-sidebar {
+  position: relative;
+  flex: none;
+  height: 100%;
+  box-sizing: border-box;
+  background: var(--vscode-sideBar-background);
+}
+
+.dv-sidebar[hidden] {
+  display: none;
+}
+
+/* Drag to widen or narrow the file tree. */
+.dv-sash {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  z-index: 5;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.dv-sash:hover,
+.dv-sash:active {
+  background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
+}
+
+.dv-status {
   padding: 12px 16px;
   color: var(--vscode-descriptionForeground);
 }
 
-.mdiff-status[hidden],
-.mdiff-file[hidden] {
+.dv-status[hidden],
+.dv-file[hidden] {
   display: none;
 }
 
-.mdiff-file {
+.dv-file {
   border-bottom: 1px solid var(--vscode-panel-border);
 }
 
-.mdiff-header {
+.dv-header {
   position: sticky;
   top: 0;
   z-index: 2;
@@ -51,7 +91,7 @@
   touch-action: manipulation;
 }
 
-.mdiff-header::before {
+.dv-header::before {
   content: "";
   flex: none;
   width: 12px;
@@ -63,41 +103,41 @@
   transition: transform 120ms ease;
 }
 
-.mdiff-header.is-collapsed::before {
+.dv-header.is-collapsed::before {
   transform: none;
 }
 
-.mdiff-header:active {
+.dv-header:active {
   background: var(--vscode-toolbar-hoverBackground);
 }
 
-.mdiff-header:focus-visible {
+.dv-header:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 
-.mdiff-header-title {
+.dv-header-title {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
 }
 
-.mdiff-header-path {
+.dv-header-path {
   display: flex;
   min-width: 0;
   white-space: nowrap;
 }
 
 /* The directory gives way first, so the file's own name stays readable. */
-.mdiff-header-dir {
+.dv-header-dir {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--vscode-descriptionForeground);
 }
 
-.mdiff-header-name {
+.dv-header-name {
   flex: none;
   max-width: 100%;
   overflow: hidden;
@@ -105,7 +145,7 @@
   font-weight: 600;
 }
 
-.mdiff-header-note {
+.dv-header-note {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -113,92 +153,92 @@
   color: var(--vscode-descriptionForeground);
 }
 
-.mdiff-header-note[hidden] {
+.dv-header-note[hidden] {
   display: none;
 }
 
-.mdiff-header-counts {
+.dv-header-counts {
   flex: none;
   display: flex;
   gap: 6px;
-  font-family: var(--mdiff-font);
+  font-family: var(--dv-font);
   font-size: 12px;
 }
 
-.mdiff-added {
+.dv-added {
   color: var(--vscode-gitDecoration-addedResourceForeground);
 }
 
-.mdiff-removed {
+.dv-removed {
   color: var(--vscode-gitDecoration-deletedResourceForeground);
 }
 
-.mdiff-header .review-viewed-check {
+.dv-header .review-viewed-check {
   margin: 0 15px;
 }
 
-.mdiff-header .review-viewed-check[hidden] {
+.dv-header .review-viewed-check[hidden] {
   display: none;
 }
 
 /* The 14px box keeps its look; the 44px around it takes the tap. */
-.mdiff-header .review-viewed-check::before {
+.dv-header .review-viewed-check::before {
   content: "";
   position: absolute;
   inset: -15px;
 }
 
-.mdiff-body {
+.dv-body {
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
 }
 
-.mdiff-body.is-message {
+.dv-body.is-message {
   padding: 12px 16px;
   color: var(--vscode-descriptionForeground);
   overflow-wrap: anywhere;
 }
 
-.mdiff-rows {
+.dv-rows {
   display: inline-block;
   min-width: 100%;
   vertical-align: top;
-  font-family: var(--mdiff-font);
+  font-family: var(--dv-font);
   font-size: 13px;
-  line-height: var(--mdiff-line);
+  line-height: var(--dv-line);
   color: var(--vscode-editor-foreground);
 }
 
-.mdiff-chunk {
+.dv-chunk {
   content-visibility: auto;
 }
 
-.mdiff-empty {
+.dv-empty {
   padding: 12px 16px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--vscode-descriptionForeground);
 }
 
-.mdiff-row {
+.dv-row {
   display: flex;
-  min-height: var(--mdiff-line);
+  min-height: var(--dv-line);
   white-space: pre;
 }
 
-.mdiff-row.is-added.is-tinted {
+.dv-row.is-added.is-tinted {
   background: var(--vscode-diffEditor-insertedLineBackground);
 }
 
-.mdiff-row.is-removed.is-tinted {
+.dv-row.is-removed.is-tinted {
   background: var(--vscode-diffEditor-removedLineBackground);
 }
 
-.mdiff-row.is-revealed {
-  animation: mdiff-reveal 1.4s ease-out;
+.dv-row.is-revealed {
+  animation: dv-reveal 1.4s ease-out;
 }
 
-@keyframes mdiff-reveal {
+@keyframes dv-reveal {
   from {
     box-shadow: inset 3px 0 0 var(--vscode-focusBorder);
     background-color: var(--vscode-editor-findMatchHighlightBackground);
@@ -206,7 +246,7 @@
 }
 
 /* The gutter stays put while the code scrolls sideways under it. */
-.mdiff-gutter {
+.dv-gutter {
   position: sticky;
   left: 0;
   z-index: 1;
@@ -215,7 +255,7 @@
   align-items: center;
   justify-content: flex-end;
   box-sizing: border-box;
-  width: calc(var(--mdiff-digits, 3) * 1ch + 36px);
+  width: calc(var(--dv-digits, 3) * 1ch + 36px);
   padding-right: 8px;
   background: var(--vscode-editor-background);
   color: var(--vscode-editorLineNumber-foreground);
@@ -223,15 +263,15 @@
   -webkit-user-select: none;
 }
 
-.no-numbers .mdiff-gutter {
+.no-numbers .dv-gutter {
   width: 28px;
 }
 
-.no-numbers .mdiff-lineno {
+.no-numbers .dv-lineno {
   display: none;
 }
 
-.is-added.is-tinted > .mdiff-gutter {
+.is-added.is-tinted > .dv-gutter {
   background:
     linear-gradient(
       var(--vscode-diffEditor-insertedLineBackground),
@@ -241,7 +281,7 @@
   box-shadow: inset 3px 0 0 var(--vscode-gitDecoration-addedResourceForeground);
 }
 
-.is-removed.is-tinted > .mdiff-gutter {
+.is-removed.is-tinted > .dv-gutter {
   background:
     linear-gradient(
       var(--vscode-diffEditor-removedLineBackground),
@@ -253,17 +293,17 @@
 }
 
 /* A line that heads a fold is one control from edge to edge: tap anywhere on it. */
-.mdiff-row.has-fold {
+.dv-row.has-fold {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
 
-.mdiff-row.has-fold:active {
+.dv-row.has-fold:active {
   background-color: var(--vscode-toolbar-hoverBackground);
 }
 
-.mdiff-chevron {
+.dv-chevron {
   position: absolute;
   inset: 0 auto 0 0;
   width: 100%;
@@ -276,7 +316,7 @@
   cursor: pointer;
 }
 
-.mdiff-chevron::before {
+.dv-chevron::before {
   content: "";
   display: inline-block;
   width: 12px;
@@ -288,96 +328,96 @@
   transform: rotate(90deg);
 }
 
-.mdiff-chevron[aria-expanded="false"]::before {
+.dv-chevron[aria-expanded="false"]::before {
   transform: none;
 }
 
-.mdiff-chevron:focus-visible {
+.dv-chevron:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 
-.mdiff-code {
+.dv-code {
   flex: 1;
   padding: 0 16px 0 8px;
 }
 
-.is-wrapped .mdiff-body {
+.is-wrapped .dv-body {
   overflow-x: hidden;
 }
 
-.is-wrapped .mdiff-rows {
+.is-wrapped .dv-rows {
   display: block;
 }
 
-.is-wrapped .mdiff-row {
+.is-wrapped .dv-row {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.mdiff-changed {
+.dv-changed {
   border-radius: 2px;
 }
 
-.is-added .mdiff-changed {
+.is-added .dv-changed {
   background: var(--vscode-diffEditor-insertedTextBackground);
 }
 
-.is-removed .mdiff-changed {
+.is-removed .dv-changed {
   background: var(--vscode-diffEditor-removedTextBackground);
 }
 
-.mdiff-comment {
-  color: var(--mdiff-comment);
-  font-style: var(--mdiff-comment-style);
+.dv-comment {
+  color: var(--dv-comment);
+  font-style: var(--dv-comment-style);
 }
-.mdiff-keyword {
-  color: var(--mdiff-keyword);
-  font-style: var(--mdiff-keyword-style);
+.dv-keyword {
+  color: var(--dv-keyword);
+  font-style: var(--dv-keyword-style);
 }
-.mdiff-type {
-  color: var(--mdiff-type);
-  font-style: var(--mdiff-type-style);
+.dv-type {
+  color: var(--dv-type);
+  font-style: var(--dv-type-style);
 }
-.mdiff-function {
-  color: var(--mdiff-function);
-  font-style: var(--mdiff-function-style);
+.dv-function {
+  color: var(--dv-function);
+  font-style: var(--dv-function-style);
 }
-.mdiff-variable {
-  color: var(--mdiff-variable);
-  font-style: var(--mdiff-variable-style);
+.dv-variable {
+  color: var(--dv-variable);
+  font-style: var(--dv-variable-style);
 }
-.mdiff-string {
-  color: var(--mdiff-string);
-  font-style: var(--mdiff-string-style);
+.dv-string {
+  color: var(--dv-string);
+  font-style: var(--dv-string-style);
 }
-.mdiff-lineno {
+.dv-lineno {
   font-variant-numeric: tabular-nums;
 }
-.mdiff-number {
-  color: var(--mdiff-number);
-  font-style: var(--mdiff-number-style);
+.dv-number {
+  color: var(--dv-number);
+  font-style: var(--dv-number-style);
 }
-.mdiff-constant {
-  color: var(--mdiff-constant);
-  font-style: var(--mdiff-constant-style);
+.dv-constant {
+  color: var(--dv-constant);
+  font-style: var(--dv-constant-style);
 }
-.mdiff-operator {
-  color: var(--mdiff-operator);
-  font-style: var(--mdiff-operator-style);
+.dv-operator {
+  color: var(--dv-operator);
+  font-style: var(--dv-operator-style);
 }
-.mdiff-heading {
-  color: var(--mdiff-heading);
-  font-style: var(--mdiff-heading-style);
+.dv-heading {
+  color: var(--dv-heading);
+  font-style: var(--dv-heading-style);
 }
 
 /* A fold folded into its header line: `opener ⋯ 12 lines closer`. */
-.mdiff-pill {
+.dv-pill {
   display: inline-block;
   margin: 0 4px;
   padding: 0 8px;
   border-radius: 10px;
-  line-height: calc(var(--mdiff-line) - 4px);
+  line-height: calc(var(--dv-line) - 4px);
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
   background: var(--vscode-badge-background);
@@ -386,11 +426,11 @@
 }
 
 /* What a collapsed region leaves: as wide as the screen, whatever the code's width. */
-.mdiff-band {
+.dv-band {
   position: sticky;
   left: 0;
   box-sizing: border-box;
-  width: var(--mdiff-width, 100vw);
+  width: var(--dv-width, 100vw);
   min-height: 44px;
   padding: 0 12px 0 0;
   border-block: 1px solid var(--vscode-panel-border);
@@ -409,43 +449,43 @@
   touch-action: manipulation;
 }
 
-.mdiff-band + .mdiff-band,
-.mdiff-chunk + .mdiff-chunk > .mdiff-band:first-child {
+.dv-band + .dv-band,
+.dv-chunk + .dv-chunk > .dv-band:first-child {
   border-top: 0;
 }
 
-.mdiff-band:active {
+.dv-band:active {
   background: var(--vscode-toolbar-hoverBackground);
 }
 
-.mdiff-band:focus-visible {
+.dv-band:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 
-.mdiff-band.kind-inserted {
+.dv-band.kind-inserted {
   box-shadow: inset 3px 0 0 var(--vscode-gitDecoration-addedResourceForeground);
 }
 
-.mdiff-band.kind-removed {
+.dv-band.kind-removed {
   box-shadow: inset 3px 0 0
     var(--vscode-gitDecoration-deletedResourceForeground);
 }
 
-.mdiff-band.kind-modified {
+.dv-band.kind-modified {
   box-shadow: inset 3px 0 0
     var(--vscode-gitDecoration-modifiedResourceForeground);
 }
 
-.mdiff-band-title {
+.dv-band-title {
   display: flex;
   align-items: center;
   gap: 8px;
   min-height: 44px;
-  padding-left: calc(8px + min(var(--mdiff-indent, 0), 8) * 0.5ch);
+  padding-left: calc(8px + min(var(--dv-indent, 0), 8) * 0.5ch);
 }
 
-.mdiff-band-chevron {
+.dv-band-chevron {
   flex: none;
   width: 28px;
   height: 12px;
@@ -454,7 +494,7 @@
     center / 12px 12px no-repeat;
 }
 
-.mdiff-band-caption {
+.dv-band-caption {
   flex: none;
   padding: 1px 6px;
   border-radius: 4px;
@@ -462,24 +502,23 @@
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: var(--mdiff-comment, var(--vscode-descriptionForeground));
+  color: var(--dv-comment, var(--vscode-descriptionForeground));
   background: var(--vscode-badge-background);
 }
 
-.mdiff-band-label {
+.dv-band-label {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
 /* A summary reads as prose at the screen's width: wrapped, with each line hanging from its own
    indent, at a size meant for reading rather than scanning. */
-.mdiff-pseudocode {
-  margin: 0 0 12px calc(44px + min(var(--mdiff-indent, 0), 8) * 0.5ch);
+.dv-pseudocode {
+  margin: 0 0 12px calc(44px + min(var(--dv-indent, 0), 8) * 0.5ch);
   padding: 8px 12px;
-  border-left: 2px solid
-    var(--mdiff-comment, var(--vscode-descriptionForeground));
+  border-left: 2px solid var(--dv-comment, var(--vscode-descriptionForeground));
   border-radius: 0 6px 6px 0;
-  font-family: var(--mdiff-font);
+  font-family: var(--dv-font);
   font-size: 14px;
   line-height: 1.55;
   color: var(--vscode-editor-foreground);
@@ -488,8 +527,8 @@
   -webkit-user-select: text;
 }
 
-.mdiff-pseudocode-line {
-  padding-left: calc(min(var(--mdiff-indent, 0), 16) * 0.75ch + 2ch);
+.dv-pseudocode-line {
+  padding-left: calc(min(var(--dv-indent, 0), 16) * 0.75ch + 2ch);
   text-indent: -2ch;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -501,4 +540,174 @@
 
 ::highlight(diffr-find-current) {
   background-color: var(--vscode-editor-findMatchBackground);
+}
+
+/* The header's link to the file on GitHub. */
+/* The codicon stylesheet makes it a block, so the glyph is centred by its line. */
+.dv-open.codicon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  line-height: 36px;
+  text-align: center;
+  border-radius: 6px;
+  color: var(--vscode-descriptionForeground);
+  text-decoration: none;
+}
+
+.dv-open:hover {
+  color: var(--vscode-foreground);
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.dv-open:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+/* Split: each segment between bands is two panes that scroll sideways apart (diffView.ts keeps
+   a file's segments level), or, wrapped, one grid whose rows wrap both sides to one height. */
+.dv-body:has(> .dv-rows.is-split) {
+  overflow-x: hidden;
+}
+
+.dv-rows.is-split {
+  display: block;
+  width: 100%;
+}
+
+.dv-seg {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.dv-pane {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.dv-pane.is-lhs,
+.dv-seg.is-grid > [data-side="lhs"] {
+  border-right: 1px solid var(--vscode-panel-border);
+}
+
+.dv-pane-rows {
+  display: inline-block;
+  min-width: 100%;
+  vertical-align: top;
+}
+
+.dv-seg.is-grid > .dv-row {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Where one side has no line beside the other's: hatched, as the diff editor draws it. */
+.dv-filler {
+  min-height: var(--dv-line);
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 5px,
+    var(--vscode-diffEditor-diagonalFill, rgba(128, 128, 128, 0.18)) 5px 6px
+  );
+}
+
+/* A selection stays on the side it began on. */
+.dv[data-selecting="lhs"] [data-side="rhs"],
+.dv[data-selecting="rhs"] [data-side="lhs"] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Where `zj`/`zk` moved the fold commands' place. */
+.dv-row.is-caret {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+/* A desktop: the editor's 12px code at Monaco's 18px rows, and controls sized for a pointer. The
+   gutter folds; the code is left to select. */
+.dv:not(.is-compact) {
+  --dv-line: 18px;
+  padding-bottom: 40vh;
+}
+
+.dv:not(.is-compact) .dv-rows {
+  font-size: 12px;
+}
+
+.dv:not(.is-compact) .dv-header {
+  min-height: 34px;
+  padding: 2px 4px 2px 12px;
+}
+
+.dv:not(.is-compact) .dv-header .review-viewed-check {
+  margin: 0 10px 0 4px;
+}
+
+.dv:not(.is-compact) .dv-header .review-viewed-check::before {
+  inset: -8px;
+}
+
+.dv:not(.is-compact) .dv-open {
+  width: 26px;
+  height: 26px;
+}
+
+.dv:not(.is-compact) .dv-header:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.dv:not(.is-compact) .dv-row.has-fold {
+  cursor: auto;
+}
+
+.dv:not(.is-compact) .dv-rows:not(.is-split) .dv-gutter {
+  width: calc(var(--dv-digits, 3) * 2ch + 44px);
+}
+
+.dv:not(.is-compact) .dv-rows:not(.is-split) .dv-lineno {
+  min-width: calc(var(--dv-digits, 3) * 1ch);
+  margin-left: 8px;
+  text-align: right;
+}
+
+.dv:not(.is-compact) .dv-row.has-fold .dv-gutter {
+  cursor: pointer;
+}
+
+.dv:not(.is-compact) .dv-row.has-fold .dv-gutter:hover {
+  color: var(--vscode-editorLineNumber-activeForeground);
+}
+
+.dv:not(.is-compact) .dv-row.has-fold:active {
+  background-color: transparent;
+}
+
+.dv:not(.is-compact) .dv-band,
+.dv:not(.is-compact) .dv-band-title {
+  min-height: 28px;
+}
+
+.dv:not(.is-compact) .dv-band {
+  font-size: 12px;
+}
+
+.dv:not(.is-compact) .dv-band:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.dv:not(.is-compact) .dv-pseudocode {
+  margin: 0 0 8px calc(40px + min(var(--dv-indent, 0), 8) * 0.5ch);
+  padding: 6px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dv:not(.is-compact) .dv-pill {
+  font-size: 11px;
 }
