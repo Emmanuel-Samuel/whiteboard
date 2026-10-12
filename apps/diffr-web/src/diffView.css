@@ -559,6 +559,11 @@
   background-color: var(--vscode-editor-findMatchHighlightBackground);
 }
 
+::highlight(diffr-scope-brace) {
+  color: var(--vscode-textLink-foreground);
+  background-color: var(--vscode-editor-wordHighlightBackground);
+}
+
 ::highlight(diffr-find-current) {
   background-color: var(--vscode-editor-findMatchBackground);
 }

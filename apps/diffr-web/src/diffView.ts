@@ -1098,6 +1098,7 @@ export class DiffView extends Disposable {
 
       if (columns) code.style.setProperty("--dv-hang", `${columns}ch`);
     }
+
     code.append(
       renderCode(
         source,
@@ -1849,6 +1850,23 @@ export class DiffView extends Disposable {
 
     if (scope.collapsed || !foldable.rail) return;
 
+    // Its braces light up too, wherever they are drawn.
+    const braces: Range[] = [];
+
+    for (const brace of foldable.braces
+      ? [foldable.braces.opener, foldable.braces.closer]
+      : []) {
+      const code = file.body.querySelector(
+        `${cells}[data-${attribute}="${brace.line - 1}"] .dv-code`,
+      );
+
+      const range = code && textRange(code, brace.column - 1, 1);
+
+      if (range) braces.push(range);
+    }
+
+    CSS.highlights?.set("diffr-scope-brace", new Highlight(...braces));
+
     // The body's rows on this side, by the block or pane that holds them: a rail is drawn in each.
     const groups = new Map<HTMLElement, HTMLElement[]>();
 
@@ -1902,6 +1920,8 @@ export class DiffView extends Disposable {
   }
 
   private clearScope(): void {
+    CSS.highlights?.delete("diffr-scope-brace");
+
     for (const mark of this.hover?.marks ?? [])
       if (mark.classList.contains("dv-row"))
         mark.classList.remove("is-scope-head");
