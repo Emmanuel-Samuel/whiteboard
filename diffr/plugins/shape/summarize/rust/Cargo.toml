@@ -26,5 +26,5 @@ bytes = "1"
 
 # Linked into a host (diffr in the browser), it calls through the host's HTTP.
 [target.'cfg(not(target_os = "wasi"))'.dependencies]
-diffr-plugin-sdk = { path = "../../../../crates/diffr-plugin-sdk", version = "0.1.1", features = ["native"] }
+diffr-plugin-sdk = { path = "../../../../crates/diffr-plugin-sdk", version = "0.3.0", features = ["native"] }
 
