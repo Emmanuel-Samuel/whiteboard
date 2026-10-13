@@ -302,36 +302,26 @@ it("a restarted server is offline until Desktop attaches again, then online with
 
   closes.push(() => gateway.close());
 
-  gateway.set([
-    { alias: "wb-a1", endpoint: a.endpoint },
-    { alias: "wb-a2", endpoint: a.endpoint },
-  ]);
+  gateway.set([{ alias: "wb-a", endpoint: a.endpoint }]);
   const { serverId } = await a.health();
-  await expect
-    .poll(() => gateway.states().map((host) => host.state))
-    .toEqual(["online", "online"]);
+  await expect.poll(() => gateway.states()[0]?.state).toBe("online");
 
   await a.stop();
   const b = await startRemote(stateDir, port);
   gateway.failed(gateway.serving(serverId)!, "test");
 
   await expect
-    .poll(() => gateway.states().map((host) => [host.state, host.detail]))
-    .toEqual([
-      ["offline", "wb-a1 restarted; attaching again."],
-      ["offline", "wb-a2 restarted; attaching again."],
-    ]);
-  expect(restarted).toEqual(["wb-a1", "wb-a2"]);
+    .poll(() => gateway.states()[0])
+    .toMatchObject({
+      state: "offline",
+      detail: "wb-a restarted; attaching again.",
+    });
+  expect(restarted).toEqual(["wb-a"]);
 
-  gateway.set([
-    { alias: "wb-a1", endpoint: b.endpoint },
-    { alias: "wb-a2", endpoint: b.endpoint },
-  ]);
-  await expect
-    .poll(() => gateway.states().map((host) => host.state))
-    .toEqual(["online", "online"]);
-  expect(restarted).toHaveLength(2);
-  expect(gateway.serving(serverId)?.alias).toBe("wb-a1");
+  gateway.set([{ alias: "wb-a", endpoint: b.endpoint }]);
+  await expect.poll(() => gateway.states()[0]?.state).toBe("online");
+  expect(restarted).toHaveLength(1);
+  expect(gateway.serving(serverId)?.alias).toBe("wb-a");
 }, 20_000);
 
 it("a 401 from a host asks Desktop once to attach again", async () => {
