@@ -63,9 +63,9 @@ const READY_NOTIFICATION_LABELS: Record<ReviewReadyNotificationChoice, string> =
   };
 
 /**
- * The Settings page. It opens from the application menu (Preferences →
- * Settings...), the command palette, or ⌘,. Reuses the Home page shell so the
- * surfaces read as one app.
+ * The Settings page. It opens from the application menu (Settings...), the
+ * command palette, or ⌘,. Reuses the Home page shell so the surfaces read as
+ * one app.
  *
  * The workbench owns every value here. Each setter resolves with the value that
  * landed, so a row shows the real state rather than an optimistic one.
@@ -417,6 +417,15 @@ export function SettingsPage({
                 onStatusChange={setInstallStatus}
               />
             ) : null}
+          </Section>
+
+          <Section label="Uninstall">
+            <Row
+              label="Uninstall Whiteboard"
+              description="Removes the whiteboard command, trace setup, and tutorial. Your sessions stay on disk."
+            >
+              <Button onClick={settings.uninstallApp}>Uninstall…</Button>
+            </Row>
           </Section>
 
           {error ? <p {...stylex.props(styles.error)}>{error}</p> : null}
