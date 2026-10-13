@@ -87,6 +87,28 @@ interface RowContext {
   readonly viewed: Record<"lhs" | "rhs", Set<number>>;
   /** Header lines of viewed scopes that keep their viewed control in view. */
   readonly viewedHeads: Record<"lhs" | "rhs", Set<number>>;
+  /** Each side's scopes, by header line, that draw an indent guide down their body. */
+  readonly guides: Record<"lhs" | "rhs", Guide[]>;
+}
+
+/** A scope's indent guide: the rows after `line` and before `end`, at its header's indentation. */
+interface Guide {
+  readonly line: number;
+  readonly end: number;
+  readonly columns: number;
+}
+
+/** A line's indentation in columns, with tabs stopping every 8. */
+function indentColumns(source: string): number {
+  let columns = 0;
+
+  for (const character of source) {
+    if (character === " ") columns++;
+    else if (character === "\t") columns += 8 - (columns % 8);
+    else break;
+  }
+
+  return columns;
 }
 
 /** A scope on one side of a file: the fold a row heads, or the smallest open one around it. */
@@ -743,7 +765,20 @@ export class DiffView extends Disposable {
       changed: changedByLine(diff),
       path,
       ...this.viewedLines(path, diff, file),
+      guides: { lhs: [], rhs: [] },
     };
+
+    for (const side of ["lhs", "rhs"] as const) {
+      for (const foldable of this.foldablesOf(diff[side]))
+        if (foldable.rail)
+          context.guides[side].push({
+            line: foldable.line,
+            end: foldable.rail.end,
+            columns: indentColumns(context.text[side][foldable.line] ?? ""),
+          });
+
+      context.guides[side].sort((a, b) => a.line - b.line);
+    }
 
     const rows = element("div", this.split ? "dv-rows is-split" : "dv-rows");
     rows.style.setProperty(
@@ -1088,15 +1123,23 @@ export class DiffView extends Disposable {
 
     // Wrapped, a long line continues under its own indentation, as an editor wraps it.
     if (this.wrapped) {
-      let columns = 0;
-
-      for (const character of source) {
-        if (character === " ") columns++;
-        else if (character === "\t") columns += 8 - (columns % 8);
-        else break;
-      }
+      const columns = indentColumns(source);
 
       if (columns) code.style.setProperty("--dv-hang", `${columns}ch`);
+    }
+
+    // A gray guide down each open scope the line sits in, at its header's indentation.
+    const guides: string[] = [];
+
+    for (const guide of context.guides[line.side]) {
+      if (guide.line >= number) break;
+
+      if (number < guide.end) guides.push(`calc(8px + ${guide.columns}ch) 0`);
+    }
+
+    if (guides.length) {
+      code.style.backgroundImage = guides.map(() => "var(--dv-guide)").join();
+      code.style.backgroundPosition = guides.join();
     }
 
     code.append(
@@ -1899,6 +1942,12 @@ export class DiffView extends Disposable {
     measure.remove();
     const padding = parseFloat(getComputedStyle(code).paddingLeft) || 0;
     const lines = foldable.rail.end - foldable.rail.start;
+    const label = `fold ${lines} line${lines === 1 ? "" : "s"}`;
+
+    // On the rail, the header says what a click does, as the editor did.
+    const hint = element("span", "dv-rail-hint", `click · ${label}`);
+    const headerCode = header?.querySelector(".dv-code");
+    marks.push(hint);
 
     for (const [parent, rows] of groups) {
       const bounds = parent.getBoundingClientRect();
@@ -1911,7 +1960,13 @@ export class DiffView extends Disposable {
 
       const rail = parent.appendChild(element("div", "dv-rail"));
       rail.dataset.fold = String(foldable.foldStateId);
-      rail.title = `Fold ${lines} line${lines === 1 ? "" : "s"}`;
+      rail.setAttribute("aria-label", label);
+
+      // A header drawn in a block away from the screen can't carry the hint.
+      if (headerCode) {
+        rail.addEventListener("pointerenter", () => headerCode.append(hint));
+        rail.addEventListener("pointerleave", () => hint.remove());
+      } else rail.title = `Click to ${label}`;
       rail.style.top = `${top - bounds.top}px`;
       rail.style.height = `${bottom - top}px`;
       rail.style.left = `${left - bounds.left + padding + indent}px`;

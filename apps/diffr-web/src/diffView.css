@@ -338,8 +338,15 @@
 }
 
 .dv-code {
+  --dv-guide: linear-gradient(
+    var(--vscode-editorIndentGuide-background1, rgba(128, 128, 128, 0.3)),
+    var(--vscode-editorIndentGuide-background1, rgba(128, 128, 128, 0.3))
+  );
   flex: 1;
   padding: 0 16px 0 8px;
+  /* diffView.ts lays one --dv-guide per open scope the line sits in. */
+  background-repeat: no-repeat;
+  background-size: 1px 100%;
 }
 
 .is-wrapped .dv-body {
@@ -785,6 +792,13 @@ a.dv-open.codicon {
   left: 3px;
   width: 3px;
   opacity: 1;
+}
+
+.dv-rail-hint {
+  margin-left: 2ch;
+  color: var(--vscode-textLink-foreground);
+  pointer-events: none;
+  user-select: none;
 }
 
 /* A scope's changes left to read and its viewed box, at the row's trailing edge. */
