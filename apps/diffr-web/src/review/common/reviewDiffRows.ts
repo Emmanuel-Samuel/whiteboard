@@ -151,13 +151,17 @@ function foldLayout(
   const baseFoldables = structuralFoldables(diff.lhs);
   const headFoldables = structuralFoldables(diff.rhs);
 
-  // A fold folded into its header line puts its pill on that side's header.
+  // A fold folded into its header line puts its pill on the header of each side it hides lines on.
   const pills = (side: "base" | "head") => {
     const byLine = new Map<number, DiffPill>();
     const foldables = side === "base" ? baseFoldables : headFoldables;
 
     for (const gap of gaps) {
-      if (gap.band || (side === "head") !== (gap.owner !== "base")) continue;
+      if (
+        gap.band ||
+        !(side === "base" ? gap.originalCount : gap.modifiedCount)
+      )
+        continue;
       const foldable = foldables.find(
         (candidate) =>
           candidate.foldStateId === gap.foldStateId && candidate.inline,
