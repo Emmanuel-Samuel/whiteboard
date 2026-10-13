@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 
+import { readFileSync, unwatchFile, watchFile } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
+import {
+  type ReviewGatewayHost,
+  ReviewGatewayHostSchema,
+} from "@dev.fast/review-protocol";
 import { reviewInstanceIdentity } from "@review/desktop-discovery";
 import { findReviewPackageRoot } from "@review/package-paths";
 import { openReviewProfile } from "@review/review-api/profile";
@@ -14,6 +19,7 @@ import { reviewTelemetryChannel } from "@review/telemetry-config";
 
 import { listenForDesktopHostShutdown } from "./desktop-host-shutdown";
 import { createGlobalReviewServer } from "./desktop-server";
+import { takeOverServerHome } from "./headless-host";
 import {
   drainServerCrashReport,
   installProcessErrorTelemetry,
@@ -74,33 +80,41 @@ export async function runDesktopHost(
   const home = devReviewHome(env);
   await mkdir(home, { recursive: true });
 
-  const local = await openReviewProfile(home, {
-    manageWorkspaces: true,
+  const log = (message: string) =>
+    process.stdout.write(`[Whiteboard gateway] ${message}\n`);
+
+  const { local, shared, server } = await takeOverServerHome(home, async () => {
+    const local = await openReviewProfile(home, {
+      manageWorkspaces: true,
+    });
+
+    // JSON is the sole user-review store. A failure is surfaced, never replaced
+    // by a second catalog or an old document renderer.
+
+    const shared = new SharedReviewStore(path.join(home, "shared-reviews"));
+    shared.connect(local.store, local.data);
+    await shared.load();
+
+    const server = createGlobalReviewServer({
+      ...serverInput,
+      log,
+      sharedReviews: shared,
+      reviewStore: local.store,
+      reviewData: local.data,
+      cliRuntimePath: env.DEV_FAST_REVIEW_CLI_RUNTIME,
+      crashDumpsDir: env.DEV_FAST_REVIEW_CRASH_DUMPS_DIR,
+    });
+
+    try {
+      await server.listen();
+    } catch (error) {
+      await local?.data.close();
+      await local?.store.close();
+      throw error;
+    }
+
+    return { local, shared, server };
   });
-
-  // JSON is the sole user-review store. A failure is surfaced, never replaced
-  // by a second catalog or an old document renderer.
-
-  const shared = new SharedReviewStore(path.join(home, "shared-reviews"));
-  shared.connect(local.store, local.data);
-  await shared.load();
-
-  const server = createGlobalReviewServer({
-    ...serverInput,
-    sharedReviews: shared,
-    reviewStore: local.store,
-    reviewData: local.data,
-    cliRuntimePath: env.DEV_FAST_REVIEW_CLI_RUNTIME,
-    crashDumpsDir: env.DEV_FAST_REVIEW_CRASH_DUMPS_DIR,
-  });
-
-  try {
-    await server.listen();
-  } catch (error) {
-    await local?.data.close();
-    await local?.store.close();
-    throw error;
-  }
 
   process.stdout.write(
     `${JSON.stringify({ event: "ready", ...server.discovery, installationId })}\n`,
@@ -116,10 +130,17 @@ export async function runDesktopHost(
 
   void stageRustAnalyzer();
 
+  const stopHostsFile = watchRemoteHostsFile(
+    env,
+    (hosts) => server.setRemoteHosts(hosts),
+    log,
+  );
+
   let stopping: Promise<void> | null = null;
 
   const stop = () => {
     if (!stopping) {
+      stopHostsFile();
       stopping = server
         .close("app-exit")
         .finally(() => shared.close())
@@ -142,6 +163,7 @@ export async function runDesktopHost(
       env.DEV_FAST_REVIEW_RUST_ANALYZER = sourcePath;
       void stageRustAnalyzer();
     },
+    (hosts) => server.setRemoteHosts(hosts),
   );
   process.once("SIGINT", () => {
     void stop().then(() => process.exit(0));
@@ -149,6 +171,41 @@ export async function runDesktopHost(
   process.once("SIGTERM", () => {
     void stop().then(() => process.exit(0));
   });
+}
+
+function watchRemoteHostsFile(
+  env: NodeJS.ProcessEnv,
+  setHosts: (hosts: ReviewGatewayHost[]) => void,
+  log: (message: string) => void,
+): () => void {
+  const file = env.DEV_FAST_REVIEW_REMOTE_HOSTS_FILE;
+
+  if (!file) return () => {};
+
+  if (reviewTelemetryChannel(env) !== "dev") {
+    log("Ignoring DEV_FAST_REVIEW_REMOTE_HOSTS_FILE in a packaged build.");
+
+    return () => {};
+  }
+
+  const read = () => {
+    try {
+      setHosts(
+        ReviewGatewayHostSchema.array().parse(
+          JSON.parse(readFileSync(file, "utf8")),
+        ),
+      );
+    } catch (error) {
+      log(
+        `Cannot read remote hosts from ${file}: ${error instanceof Error ? error.name : "unreadable"}.`,
+      );
+    }
+  };
+
+  read();
+  watchFile(file, { interval: 1_000 }, read);
+
+  return () => unwatchFile(file, read);
 }
 
 function isEnabledEnvValue(value: string | undefined): boolean {

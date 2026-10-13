@@ -2,16 +2,25 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdir, realpath, rm } from "node:fs/promises";
 import { createServer } from "node:http";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { isObjectValue } from "@dev.fast/json";
 import { withFileLock, writePrivateJsonAtomic } from "@dev.fast/trace-core";
+import { desktopUsesHome } from "@review/desktop-discovery.js";
 import { openReviewProfile } from "@review/review-api/profile.js";
 import {
+  DESKTOP_TAKEOVER_SIGNAL,
   type ReviewServerDiscovery,
+  desktopOwnsHome,
   headlessServerLockPath,
+  readReviewServerDiscovery,
   reviewServerDiscoveryPath,
 } from "@review/server-discovery.js";
 
+import {
+  headlessServerOwner,
+  stopBackgroundServer,
+} from "./background-server.js";
 import { migrateDiffrConfig } from "./diffr-config.js";
 import { GlobalReviewDesktopVerbRelay } from "./global-verb-relay.js";
 import { createNodeRequestListener } from "./hono-http.js";
@@ -26,11 +35,14 @@ interface HeadlessServerInput {
   stateDir: string;
   port?: number;
   softwareMapEnabled?: boolean;
+  startedBy?: ReviewServerDiscovery["startedBy"];
   signal: AbortSignal;
   /** The CLI's instance, already on the `headless` surface. */
   telemetry?: Pick<ReviewTelemetryCapture, "captureUiEvent">;
   onReady(discovery: ReviewServerDiscovery): void;
 }
+
+export class HeadlessServerBusyError extends Error {}
 
 /** One foreground headless endpoint per profile; Desktop shares its database. */
 export async function runHeadlessServer(input: HeadlessServerInput) {
@@ -45,7 +57,7 @@ export async function runHeadlessServer(input: HeadlessServerInput) {
   ).finally(() => stopErrorTelemetry?.());
 
   if (!outcome.acquired)
-    throw new Error(
+    throw new HeadlessServerBusyError(
       `A Whiteboard server already owns ${stateDir}. Stop it first, or choose another --state-dir.`,
     );
 }
@@ -70,15 +82,50 @@ export function withHeadlessServerLock<T>(
   );
 }
 
+/**
+ * Desktop owns its home: it stops any server there, then starts under that
+ * server's lock, so none can start until Desktop has published its discovery.
+ */
+export async function takeOverServerHome<T>(
+  home: string,
+  start: () => Promise<T>,
+): Promise<T> {
+  const stateDir = await realpath(home);
+  const deadline = Date.now() + 30_000;
+
+  while (true) {
+    const outcome = await withHeadlessServerLock(stateDir, start);
+
+    if (outcome.acquired) return outcome.result;
+
+    const owner = await headlessServerOwner(stateDir);
+
+    const discovery = await readReviewServerDiscovery(stateDir).catch(
+      () => null,
+    );
+
+    if (owner !== undefined && discovery?.serverPid === owner)
+      await stopBackgroundServer(discovery, DESKTOP_TAKEOVER_SIGNAL);
+    else if (Date.now() > deadline)
+      throw new Error(
+        `Process ${owner} holds the Whiteboard server's lock in ${stateDir} without serving it.`,
+      );
+    else await delay(100);
+  }
+}
+
 async function serve(input: HeadlessServerInput) {
   if (input.signal.aborted) return;
+
+  if (await desktopUsesHome(input.stateDir))
+    throw new HeadlessServerBusyError(desktopOwnsHome(input.stateDir));
 
   await migrateDiffrConfig(input.signal);
 
   if (input.telemetry) await drainServerCrashReport(input.telemetry);
 
   const local = await openReviewProfile(input.stateDir, {
-    manageWorkspaces: false,
+    manageWorkspaces: true,
   });
 
   const discovery: ReviewServerDiscovery = {
@@ -87,6 +134,7 @@ async function serve(input: HeadlessServerInput) {
     url: "http://127.0.0.1:0",
     serverPid: process.pid,
     token: randomBytes(32).toString("base64url"),
+    startedBy: input.startedBy ?? "user",
   };
 
   const relay = new GlobalReviewDesktopVerbRelay();

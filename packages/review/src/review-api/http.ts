@@ -1,9 +1,6 @@
-import { createHash } from "node:crypto";
-
 import { type JsonObject, isJsonObject } from "@dev.fast/json";
 import {
-  REVIEW_CLIENT_HEADER,
-  REVIEW_CLIENT_REMOTE,
+  type ReviewStreamLine,
   type ReviewStructuralDiffEvent,
 } from "@dev.fast/review-protocol";
 import { errorMessage } from "@dev.fast/trace-core";
@@ -154,10 +151,6 @@ export interface ReviewApiHooks {
   }) => void;
   sharing?: SharingHostEvents;
 }
-
-/** A gateway forwarding from another machine; it gets no local paths. */
-const remoteCaller = (context: Context) =>
-  context.req.header(REVIEW_CLIENT_HEADER) === REVIEW_CLIENT_REMOTE;
 
 /** Both hosts mount this behind their token authentication. */
 export function createReviewApi(
@@ -509,121 +502,123 @@ export function createReviewApi(
         );
       },
     );
-  app.get("/watch", async (context) => {
-    const query = context.req.query("subscriptions");
+  app.get("/watch", (context) => {
+    let input: unknown;
 
-    if (query !== undefined) {
-      let input: unknown;
-
-      try {
-        input = JSON.parse(query);
-      } catch {
-        throw new ReviewInputError("Invalid subscriptions.");
-      }
-
-      const subscriptions = z
-        .array(
-          z.strictObject({
-            reviewId: z.string().min(1).nullable(),
-            mode: coverageModeSchema,
-          }),
-        )
-        .parse(input);
-
-      // Only entries whose review (or the catalog) changed are re-read and re-sent.
-      const dirty = new Set(subscriptions.keys());
-
-      const mark = (id: string | null) => {
-        let marked = false;
-
-        subscriptions.forEach((item, index) => {
-          if (item.reviewId === id) {
-            dirty.add(index);
-            marked = true;
-          }
-        });
-
-        return marked;
-      };
-
-      return watch(
-        () =>
-          subscriptions.map(({ reviewId, mode }, index) => {
-            if (!dirty.delete(index)) return null;
-
-            try {
-              return {
-                value:
-                  reviewId === null
-                    ? catalog(mode)
-                    : {
-                        ...readReview(reviewId),
-                        activity: store.activity.read(reviewId),
-                        coverageRevision: data?.coverageRevision ?? 0,
-                      },
-              };
-            } catch (error) {
-              return {
-                error:
-                  error instanceof ReviewInputError
-                    ? error.message
-                    : "Could not read review.",
-              };
-            }
-          }),
-        (notify) => {
-          const stopRefresh = store.watchWorktrees();
-
-          const stops = [
-            stopRefresh,
-            data?.subscribeCoverage(() => {
-              subscriptions.forEach((item, index) => {
-                if (item.reviewId !== null) dirty.add(index);
-              });
-
-              // Coverage never changes the catalog; don't send an all-null line.
-              if (dirty.size > 0) notify();
-            }) ?? (() => {}),
-            store.subscribe((result) => {
-              if (mark(result.reviewId)) notify();
-            }),
-            store.activity.subscribe((id) => {
-              if (mark(id)) notify();
-            }),
-            store.activity.subscribeWorking(() => {
-              if (mark(null)) notify();
-            }),
-            shared?.subscribe(() => {
-              if (mark(null)) notify();
-            }) ?? (() => {}),
-            store.subscribeCatalog(() => {
-              if (mark(null)) notify();
-            }),
-          ];
-
-          return () => stops.forEach((stop) => stop());
-        },
-        // A missing review is an {error} entry here, never a 404.
-        () => {},
-      );
+    try {
+      input = JSON.parse(context.req.query("subscriptions") ?? "");
+    } catch {
+      throw new ReviewInputError("Invalid subscriptions.");
     }
 
-    await ensureScratchpad();
+    const subscriptions = z
+      .array(
+        z.strictObject({
+          reviewId: z.string().min(1).nullable(),
+          mode: coverageModeSchema,
+        }),
+      )
+      .parse(input);
 
-    return watch(
-      () => catalog(coverageModeSchema.parse(context.req.query("mode"))),
-      (notify) => {
-        const local = store.subscribeCatalog(notify);
-        const activity = store.activity.subscribeWorking(notify);
-        const imported = shared?.subscribe(notify);
-
-        return () => {
-          local();
-          activity();
-          imported?.();
-        };
-      },
+    const modes = new Set(
+      subscriptions.flatMap((item) =>
+        item.reviewId === null ? [item.mode] : [],
+      ),
     );
+
+    const reviewIds = new Set(
+      subscriptions.flatMap((item) => item.reviewId ?? []),
+    );
+
+    const dirtyModes = new Set(modes);
+    const dirtyReviews = new Set(reviewIds);
+    const sentLists = new Map<string, string>();
+
+    const readReviewLine = (reviewId: string): ReviewStreamLine<Snapshot> => {
+      try {
+        return {
+          kind: "review",
+          reviewId,
+          value: {
+            ...readReview(reviewId),
+            activity: store.activity.read(reviewId),
+            coverageRevision: data?.coverageRevision ?? 0,
+          },
+        };
+      } catch (error) {
+        return {
+          kind: "review",
+          reviewId,
+          error:
+            error instanceof ReviewInputError
+              ? error.message
+              : "Could not read review.",
+        };
+      }
+    };
+
+    const lines = () => {
+      const pending: string[] = [];
+
+      for (const mode of dirtyModes) {
+        const line = JSON.stringify({
+          kind: "list",
+          mode,
+          reviews: catalog(mode),
+        } satisfies ReviewStreamLine);
+
+        if (sentLists.get(mode) !== line) pending.push(line);
+        sentLists.set(mode, line);
+      }
+
+      for (const reviewId of dirtyReviews)
+        pending.push(JSON.stringify(readReviewLine(reviewId)));
+
+      dirtyModes.clear();
+      dirtyReviews.clear();
+
+      return pending;
+    };
+
+    const markReview = (reviewId: string) => {
+      if (!reviewIds.has(reviewId)) return false;
+      dirtyReviews.add(reviewId);
+
+      return true;
+    };
+
+    const markLists = () => {
+      modes.forEach((mode) => dirtyModes.add(mode));
+
+      return modes.size > 0;
+    };
+
+    return watch(lines, (notify) => {
+      const stops = [
+        store.watchWorktrees(),
+        data?.subscribeCoverage(() => {
+          reviewIds.forEach((id) => dirtyReviews.add(id));
+          notify();
+        }) ?? (() => {}),
+        store.subscribe((result) => {
+          if (markReview(result.reviewId)) notify();
+        }),
+        store.activity.subscribe((id) => {
+          if (markReview(id)) notify();
+        }),
+        store.activity.subscribeWorking(() => {
+          if (markLists()) notify();
+        }),
+        shared?.subscribe(() => {
+          if (markLists()) notify();
+        }) ?? (() => {}),
+        store.subscribeCatalog(() => {
+          if (markLists()) notify();
+        }),
+      ];
+
+      return () => stops.forEach((stop) => stop());
+    });
   });
 
   /** Show a review in Desktop and start preparing its pinned checkouts. */
@@ -684,41 +679,6 @@ export function createReviewApi(
 
     return context.json({ ok: true, ...(await openReview(readReview(id))) });
   });
-  app.get("/:id/watch", (context) => {
-    const id = context.req.param("id");
-
-    // Activity changes every renewal; reload the document only when it changed.
-    let document: Snapshot | undefined;
-
-    return watch(
-      () => ({
-        ...(document ??= readReview(id)),
-        activity: isShared(id)
-          ? { workingCount: 0, expiresAt: null }
-          : store.activity.read(id),
-      }),
-      (notify) => {
-        const stopRefresh = store.watchWorktrees();
-
-        const stopDocument = store.subscribe((result) => {
-          if (result.reviewId === id) {
-            document = undefined;
-            notify();
-          }
-        });
-
-        const stopActivity = store.activity.subscribe((changed) => {
-          if (changed === id) notify();
-        });
-
-        return () => {
-          stopRefresh();
-          stopDocument();
-          stopActivity();
-        };
-      },
-    );
-  });
 
   if (data) {
     const traceQuery = readQuerySchemas.maps.extend({
@@ -768,12 +728,6 @@ export function createReviewApi(
       return context.json(result);
     });
     app.post("/:id/navigator", reviewAccess("edit"), async (context) => {
-      if (remoteCaller(context))
-        throw new ReviewInputError(
-          "Source windows are not available for a review on another machine.",
-          409,
-        );
-
       const input = readQuerySchemas.file
         .extend({
           side: z.enum(["base", "head"]).default("head"),
@@ -884,21 +838,7 @@ export function createReviewApi(
         queryAnchor(input),
       );
 
-      return context.json(
-        remoteCaller(context)
-          ? {
-              // A live checkout's identity names its path; keep only its equality.
-              identity: createHash("sha256")
-                .update(environment.identity)
-                .digest("hex"),
-              // An acquisition error can quote local paths.
-              ...(environment.issue && {
-                issue:
-                  "The checkout for language features is not available on the remote machine.",
-              }),
-            }
-          : environment,
-      );
+      return context.json(environment);
     });
     app.post("/:id/environment", reviewAccess("active"), async (context) => {
       const input = z
@@ -972,7 +912,6 @@ export function createReviewApi(
       }
 
       const local =
-        !remoteCaller(context) &&
         !input.commit &&
         !anchor &&
         input.side === "head" &&
@@ -1013,7 +952,7 @@ export function createReviewApi(
           } catch (error) {
             send({
               type: "error",
-              message: error instanceof Error ? error.message : String(error),
+              message: errorMessage(error),
             });
           } finally {
             if (!abort.signal.aborted) controller.close();
@@ -1968,35 +1907,23 @@ async function locateRepositories(
   };
 }
 
-/** Send committed state, coalescing updates when the reader falls behind. */
-function watch<T>(
-  read: () => T,
+function watch(
+  lines: () => string[],
   subscribe: (notify: () => void) => () => void,
-  probe: () => void = read,
 ) {
-  probe(); // Return a normal 404 before opening the response.
   let stop = () => {};
 
-  let dirty = true;
   const encoder = new TextEncoder();
 
   const send = (controller: ReadableStreamDefaultController<Uint8Array>) => {
-    if (
-      !dirty ||
-      controller.desiredSize === null ||
-      controller.desiredSize <= 0
-    )
-      return;
+    if (controller.desiredSize === null || controller.desiredSize <= 0) return;
 
     try {
-      const line = JSON.stringify(read()) + "\n";
+      const pending = lines();
 
-      // enqueue can pull synchronously; clear first so it doesn't resend.
-      dirty = false;
-      controller.enqueue(encoder.encode(line));
+      if (pending.length)
+        controller.enqueue(encoder.encode(pending.join("\n") + "\n"));
     } catch (error) {
-      // A review can be deleted while this stream is open. Do not throw into
-      // the already-committed writer; close this reader and unsubscribe it.
       stop();
       controller.error(error);
     }
@@ -2004,9 +1931,15 @@ function watch<T>(
 
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
+      let scheduled = false;
+
       stop = subscribe(() => {
-        dirty = true;
-        send(controller);
+        if (scheduled) return;
+        scheduled = true;
+        queueMicrotask(() => {
+          scheduled = false;
+          send(controller);
+        });
       });
       send(controller);
     },
