@@ -36,11 +36,17 @@ const client = new ReviewApiClient(
 
 afterEach(async () => {
   // The scratchpad cannot be deleted; every review can.
-  for (const { reviewId, kind } of store.list())
-    if (kind !== "scratchpad")
+  for (const { reviewId, kind, trashedAt } of store.list()) {
+    if (kind === "scratchpad") continue;
+
+    if (!trashedAt)
       await store.execute({
-        operation: { type: "delete", reviewId },
+        operation: { type: "lifecycle", state: "trash", reviewId },
       });
+    await store.execute({
+      operation: { type: "delete", reviewId },
+    });
+  }
 });
 
 /** Catalog entries that are reviews: listing also makes the scratchpad. */

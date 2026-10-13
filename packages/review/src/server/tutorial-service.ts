@@ -134,10 +134,15 @@ export function createTutorialService(input: {
   }
 
   async function cleanup() {
-    for (const reviewId of input.store.tutorialIds())
+    for (const reviewId of input.store.tutorialIds()) {
+      if (!input.store.read(reviewId).trashedAt)
+        await input.store.execute({
+          operation: { type: "lifecycle", state: "trash", reviewId },
+        });
       await input.store.execute({
         operation: { type: "delete", reviewId },
       });
+    }
 
     // Windows cannot delete a checkout while its Git reader or watchers
     // hold it open, and handles can outlive their close briefly.

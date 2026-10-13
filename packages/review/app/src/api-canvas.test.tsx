@@ -377,7 +377,7 @@ it("keeps sequence step identities and supports explanation/code steps without i
   ]);
 });
 
-it("dismisses immediately through the API without changing the saved document", async () => {
+it("moves a board to Trash without changing the saved document", async () => {
   const { reviewId } = await command({
     type: "create",
     title: "Dismiss me",
@@ -405,12 +405,12 @@ it("dismisses immediately through the API without changing the saved document", 
 
   const dismiss = [
     ...container.querySelectorAll<HTMLButtonElement>("button"),
-  ].find((button) => button.textContent === "Dismiss")!;
+  ].find((button) => button.textContent === "Move to Trash")!;
 
   await act(async () => dismiss.click());
 
   await vi.waitFor(() =>
-    expect(store.list()[0]?.dismissedAt).toEqual(expect.any(String)),
+    expect(store.list()[0]?.trashedAt).toEqual(expect.any(String)),
   );
   expect(store.read(reviewId).version).toBe(0);
 });
@@ -995,12 +995,12 @@ it("offers to dismiss a review whose worktree is gone, without reading its diff"
 
     const dismiss = () =>
       [...container.querySelectorAll<HTMLButtonElement>("button")].find(
-        (button) => button.textContent === "Dismiss review",
+        (button) => button.textContent === "Move to Trash",
       );
 
     await act(async () => dismiss()!.click());
     await vi.waitFor(() =>
-      expect(gone.list()[0]?.dismissedAt).toEqual(expect.any(String)),
+      expect(gone.list()[0]?.trashedAt).toEqual(expect.any(String)),
     );
     expect(dismiss()).toBeUndefined();
   } finally {

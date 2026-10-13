@@ -84,9 +84,14 @@ export const commandSchema = z.strictObject({
   operation: z.discriminatedUnion("type", [
     z.strictObject({ type: z.literal("delete"), reviewId }),
     z.strictObject({
+      type: z.literal("lifecycle"),
+      reviewId,
+      state: z.enum(["active", "trash"]),
+    }),
+    z.strictObject({
       type: z.literal("attention"),
       reviewId,
-      action: z.enum(["view", "dismiss", "restore"]),
+      action: z.literal("view"),
     }),
     z.strictObject({
       type: z.literal("create"),
@@ -156,6 +161,8 @@ export interface SnapshotOrigin {
 }
 
 export interface Snapshot {
+  /** Current lifecycle state, projected onto every version when read. */
+  trashedAt?: string | null;
   shared?: { login?: string; sharedAt?: number; cloneUrl?: string };
   reviewId: string;
   version: number;
@@ -200,6 +207,7 @@ export interface Result {
   type?: Element["type"] | "lens";
   children?: WrittenComponent[];
   attention?: true;
+  lifecycle?: true;
   deleted?: true;
   warnings?: string[];
 }
@@ -257,6 +265,7 @@ export class ReviewStore {
   private readonly liveSources = new Map<string, Snapshot>();
   private refreshTimer?: ReturnType<typeof setInterval>;
   private refreshSubscribers = 0;
+  private readonly purgeTimer: ReturnType<typeof setInterval>;
 
   watchWorktrees(): () => void {
     this.refreshSubscribers++;
@@ -326,6 +335,7 @@ export class ReviewStore {
 
     const run = this.pending.then(async () => {
       for (const summary of this.list()) {
+        if (summary.trashedAt) continue;
         const snapshot = this.read(summary.reviewId, summary.version);
 
         try {
@@ -379,6 +389,7 @@ export class ReviewStore {
   private readonly externalChanges: ReturnType<typeof setInterval>;
   private observedDataVersion: number;
   private observedVersions = new Map<string, number>();
+  private observedDeletions = new Map<string, string>();
   subscribeCatalog(listener: () => void) {
     this.catalogListeners.add(listener);
 
@@ -409,11 +420,18 @@ export class ReviewStore {
     // WAL plus a busy timeout: another host on the same home waits instead of failing.
     this.db = new DatabaseSync(databasePath, { timeout: 5000 });
     initializeReviewStoreSchema(this.db);
-    this.activity = new ReviewActivity(this.db, (id) => this.assertExists(id));
+    this.activity = new ReviewActivity(this.db, (id) =>
+      this.assertWritable(id),
+    );
     this.askHistory = new AskHistory(this.db);
+
+    this.purgeExpired();
+    this.purgeTimer = setInterval(() => this.purgeExpired(), 60_000);
+    this.purgeTimer.unref();
 
     this.observedDataVersion = this.dataVersion();
     this.observedVersions = this.currentVersions();
+    this.observedDeletions = this.currentDeletions();
     this.externalChanges = setInterval(
       () => this.refreshExternalChanges(),
       250,
@@ -434,6 +452,16 @@ export class ReviewStore {
     );
   }
 
+  private currentDeletions() {
+    return new Map(
+      this.db
+        .prepare(
+          "SELECT review_id,deleted_at FROM review_attention WHERE deleted_at IS NOT NULL",
+        )
+        .all()
+        .map((row) => [String(row.review_id), String(row.deleted_at)]),
+    );
+  }
   private refreshExternalChanges() {
     const version = this.dataVersion();
 
@@ -441,11 +469,22 @@ export class ReviewStore {
     this.observedDataVersion = version;
     const current = this.currentVersions();
     const previous = this.observedVersions;
+    const deletions = this.currentDeletions();
+    const previousDeletions = this.observedDeletions;
+    this.observedDeletions = deletions;
     this.observedVersions = current;
 
-    for (const [reviewId, savedVersion] of current)
+    for (const [reviewId, savedVersion] of current) {
       if (previous.get(reviewId) !== savedVersion)
         this.notify({ reviewId, version: savedVersion });
+      else if (previousDeletions.get(reviewId) !== deletions.get(reviewId))
+        this.notify({
+          reviewId,
+          version: savedVersion,
+          lifecycle: true,
+          attention: true,
+        });
+    }
 
     for (const [reviewId, savedVersion] of previous)
       if (!current.has(reviewId)) {
@@ -490,10 +529,11 @@ export class ReviewStore {
     files: { path: string; fingerprint: string; scope: Coverage }[],
     viewed: boolean,
   ): void {
-    this.assertExists(reviewId);
+    this.assertWritable(reviewId);
     this.db.exec("BEGIN IMMEDIATE");
 
     try {
+      this.assertWritable(reviewId);
       const current = this.viewedCoverage(reviewId);
 
       for (const file of files) {
@@ -630,6 +670,7 @@ export class ReviewStore {
     this.closing = true;
     clearInterval(this.externalChanges);
     clearInterval(this.refreshTimer);
+    clearInterval(this.purgeTimer);
     await this.pending;
     this.listeners.clear();
     this.catalogListeners.clear();
@@ -668,6 +709,62 @@ export class ReviewStore {
         "Review not found. If this is an old Whiteboard review, ask your agent to migrate your old Whiteboard reviews.",
         404,
       );
+  }
+  assertWritable(id: string) {
+    this.assertExists(id);
+    const trashedAt = this.trashTime(id);
+
+    if (trashedAt)
+      throw new ReviewInputError(
+        `This whiteboard was moved to Trash on ${new Date(trashedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}. Restore it with session_lifecycle({"sessionId":"${id}","state":"active"}) to continue.`,
+        409,
+      );
+  }
+  private trashTime(id: string): string | null {
+    const row = this.db
+      .prepare("SELECT deleted_at FROM review_attention WHERE review_id=?")
+      .get(id);
+
+    return row?.deleted_at ? String(row.deleted_at) : null;
+  }
+  private removePermanently(id: string) {
+    for (const table of [
+      "ask_conversations",
+      "authoring_presences",
+      "review_coverage",
+      "review_attention",
+      "versions",
+    ])
+      this.db.prepare(`DELETE FROM ${table} WHERE review_id=?`).run(id);
+    this.db.prepare("DELETE FROM reviews WHERE id=?").run(id);
+    this.liveSources.delete(id);
+  }
+  private purgeExpired() {
+    const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+    const expired: Result[] = [];
+    this.db.exec("BEGIN IMMEDIATE");
+
+    try {
+      for (const row of this.db
+        .prepare(
+          "SELECT review_id,version FROM review_attention JOIN reviews ON reviews.id=review_id WHERE deleted_at <= ?",
+        )
+        .all(cutoff)) {
+        const reviewId = String(row.review_id);
+        expired.push({ reviewId, version: Number(row.version), deleted: true });
+        this.removePermanently(reviewId);
+      }
+
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+
+    for (const result of expired) {
+      this.activity.deleted(result.reviewId);
+      this.notify(result);
+    }
   }
   read(id: string, version?: number): Snapshot {
     const row =
@@ -719,7 +816,10 @@ export class ReviewStore {
       };
     const live = version === undefined ? this.liveSources.get(id) : undefined;
 
-    if (live?.version === snapshot.version) return structuredClone(live);
+    if (live?.version === snapshot.version)
+      return { ...structuredClone(live), trashedAt: this.trashTime(id) };
+
+    snapshot.trashedAt = this.trashTime(id);
 
     return snapshot;
   }
@@ -772,7 +872,7 @@ export class ReviewStore {
       .prepare(
         `SELECT json_remove(versions.snapshot,'$.document') AS summary,
           (SELECT json_extract(first.snapshot,'$.createdAt') FROM versions AS first WHERE first.review_id=reviews.id ORDER BY first.version LIMIT 1) AS first_created_at,
-          review_attention.viewed_at, review_attention.dismissed_at, repositories.name AS repository_name, repositories.path AS repository_path
+          review_attention.viewed_at, review_attention.deleted_at, repositories.name AS repository_name, repositories.path AS repository_path
         FROM reviews
         JOIN versions ON versions.review_id=reviews.id AND versions.version=reviews.version
         LEFT JOIN review_attention ON review_attention.review_id=reviews.id
@@ -820,7 +920,7 @@ export class ReviewStore {
             ? String(row.repository_name)
             : (summary.pins?.repositoryId ?? ""),
           viewedAt: row.viewed_at ? String(row.viewed_at) : null,
-          dismissedAt: row.dismissed_at ? String(row.dismissed_at) : null,
+          trashedAt: row.deleted_at ? String(row.deleted_at) : null,
           working: this.activity.isWorking(summary.reviewId),
         };
 
@@ -923,6 +1023,14 @@ export class ReviewStore {
 
     const run = this.pending.then(async () => {
       const op = command.operation;
+      this.purgeExpired();
+
+      if (
+        op.type !== "create" &&
+        op.type !== "delete" &&
+        op.type !== "lifecycle"
+      )
+        this.assertWritable(op.reviewId);
 
       // The scratchpad is edited and restored like a review, and nothing else.
       if (
@@ -992,6 +1100,14 @@ export class ReviewStore {
       }
 
       if (op.type === "delete") {
+        this.assertExists(op.reviewId);
+
+        if (!this.trashTime(op.reviewId))
+          throw new ReviewInputError(
+            "Move this whiteboard to Trash before deleting it.",
+            409,
+          );
+
         const result: Result = {
           reviewId: op.reviewId,
           version: this.read(op.reviewId).version,
@@ -1000,30 +1116,21 @@ export class ReviewStore {
 
         this.commitCommand(
           result,
-          () => {
-            for (const table of [
-              "ask_conversations",
-              "authoring_presences",
-              "review_coverage",
-              "review_attention",
-              "versions",
-            ])
-              this.db
-                .prepare(`DELETE FROM ${table} WHERE review_id=?`)
-                .run(op.reviewId);
-            this.db.prepare("DELETE FROM reviews WHERE id=?").run(op.reviewId);
-          },
+          () => this.removePermanently(op.reviewId),
           () => this.assertMutation(op.reviewId, result.version),
         );
 
         return result;
       }
 
-      if (op.type === "attention") {
+      if (op.type === "attention" || op.type === "lifecycle") {
         const result: Result = {
           reviewId: op.reviewId,
           version: this.read(op.reviewId).version,
           attention: true,
+          ...(op.type === "lifecycle" && {
+            lifecycle: true as const,
+          }),
         };
 
         this.commitCommand(result, () => {
@@ -1033,21 +1140,22 @@ export class ReviewStore {
             )
             .run(op.reviewId);
 
-          if (op.action === "view")
+          if (op.type === "attention")
             this.db
               .prepare(
                 "UPDATE review_attention SET viewed_at=? WHERE review_id=?",
               )
               .run(new Date().toISOString(), op.reviewId);
-          else
+          else {
+            const timestamp =
+              op.state === "trash" ? new Date().toISOString() : null;
+
             this.db
               .prepare(
-                "UPDATE review_attention SET dismissed_at=? WHERE review_id=?",
+                "UPDATE review_attention SET deleted_at=CASE WHEN ? IS NULL THEN NULL ELSE COALESCE(deleted_at, ?) END WHERE review_id=?",
               )
-              .run(
-                op.action === "dismiss" ? new Date().toISOString() : null,
-                op.reviewId,
-              );
+              .run(timestamp, timestamp, op.reviewId);
+          }
         });
 
         return result;
@@ -1066,6 +1174,8 @@ export class ReviewStore {
         op.type === "create"
           ? createdSnapshot(id, op, resolvedTarget, fromPullRequest?.title)
           : structuredClone(previous!);
+
+      delete snapshot.trashedAt;
 
       // Overlay state: a degraded read must not persist unavailability.
       delete snapshot.sourceUnavailable;
@@ -1257,7 +1367,12 @@ export class ReviewStore {
             )
             .run(id, snapshot.version, JSON.stringify(snapshot));
         },
-        previous ? () => this.assertMutation(id, previous.version) : undefined,
+        previous
+          ? () => {
+              this.assertWritable(id);
+              this.assertMutation(id, previous.version);
+            }
+          : undefined,
         op.type === "edit" || op.type === "lens_edit"
           ? {
               surface: op.type === "edit" ? "document" : "lenses",
@@ -1297,6 +1412,14 @@ export class ReviewStore {
         ? []
         : this.reviewsForPullRequest(op.pullRequestUrl);
 
+    if (existing) {
+      try {
+        this.assertReusableReview(existing);
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    }
+
     return this.providers.resolvePullRequest(op.pullRequestUrl, {
       id: op.repositoryId,
       preferred: existing && this.read(existing).pins?.repositoryId,
@@ -1315,6 +1438,13 @@ export class ReviewStore {
       .all(pullRequestKey(url))
       .map((row) => String(row.id));
   }
+  private assertReusableReview(reviewId: string) {
+    if (this.trashTime(reviewId))
+      throw new ReviewInputError(
+        `This PR's whiteboard is in Trash. Restore it to continue:\n\nsession_lifecycle({"sessionId":"${reviewId}","state":"active"})`,
+        409,
+      );
+  }
   /** The answer to a create that found its PR's review. Its target stays:
    * moving it would silently point existing links at different code. */
   private existingReview(
@@ -1323,6 +1453,8 @@ export class ReviewStore {
     requested: Pins,
   ): Result {
     const snapshot = this.read(reviewId);
+
+    this.assertReusableReview(reviewId);
 
     const headMoved =
       snapshot.pins?.repositoryId !== requested.repositoryId ||
@@ -1413,7 +1545,7 @@ export class ReviewStore {
     else if (!result.attention)
       this.observedVersions.set(result.reviewId, result.version);
 
-    if (!result.attention)
+    if (!result.attention || result.lifecycle)
       for (const listener of this.listeners)
         try {
           listener(result);
@@ -1428,11 +1560,11 @@ export class ReviewStore {
         // The saved command must remain successful if a viewer disconnects.
       }
   }
-  /** Dismissed reviews, as Home lists them; only a restore clears it, not a view. */
-  dismissedIds(): string[] {
+  /** Viewing a review in Trash does not restore it. */
+  trashedIds(): string[] {
     return this.db
       .prepare(
-        "SELECT review_id FROM review_attention WHERE dismissed_at IS NOT NULL",
+        "SELECT review_id FROM review_attention WHERE deleted_at IS NOT NULL",
       )
       .all()
       .map((row) => String(row.review_id));

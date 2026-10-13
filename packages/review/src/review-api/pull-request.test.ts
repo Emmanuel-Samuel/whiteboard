@@ -283,6 +283,48 @@ describe("creating a review from a pull request URL alone", () => {
     expect(ghCalls).toBe(calls + 1);
   });
 
+  it("requires restoring a deleted PR review before reusing it", async () => {
+    await local.data.register(checkout);
+    const created = await createFromUrl();
+    await local.store.execute(
+      command({
+        type: "lifecycle",
+        state: "trash",
+        reviewId: created.reviewId,
+      }),
+    );
+    const calls = ghCalls;
+
+    await expect(createFromUrl()).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining(created.reviewId),
+    });
+    expect(ghCalls).toBe(calls);
+    expect(local.store.list()).toHaveLength(1);
+    expect(local.store.read(created.reviewId).trashedAt).toBeTruthy();
+
+    await local.store.execute(
+      command({
+        type: "lifecycle",
+        state: "active",
+        reviewId: created.reviewId,
+      }),
+    );
+    expect(await createFromUrl()).toMatchObject({
+      created: false,
+      reviewId: created.reviewId,
+    });
+    await expect(
+      local.store.execute(
+        command({
+          type: "rename",
+          reviewId: created.reviewId,
+          title: "Continued review",
+        }),
+      ),
+    ).resolves.toMatchObject({ reviewId: created.reviewId });
+  });
+
   it("diffs a merge-committed PR from GitHub's frozen base, not the absorbing branch", async () => {
     await local.data.register(checkout);
     gitIn(upstream)(

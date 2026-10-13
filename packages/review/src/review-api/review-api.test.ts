@@ -264,6 +264,16 @@ describe("snapshot authoring", () => {
       content: { type: "markdown", markdown: "Private review text" },
     });
     const deletion = request({ type: "delete", reviewId });
+    const saved = store.read(reviewId);
+    await expect(store.execute(deletion)).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(store.read(reviewId)).toEqual(saved);
+    expect(store.history(reviewId)).toHaveLength(2);
+
+    await store.execute(
+      request({ type: "lifecycle", state: "trash", reviewId }),
+    );
     const result = await store.execute(deletion);
     expect(result).toMatchObject({ reviewId, deleted: true });
     expect(() => store.read(reviewId)).toThrow(/not found/);
@@ -279,7 +289,7 @@ describe("snapshot authoring", () => {
     ]);
     await expect(store.execute(deletion)).rejects.toThrow(/not found/);
   });
-  it("persists attention without creating a document version or notifying its readers", async () => {
+  it("persists lifecycle changes without creating a version and notifies readers", async () => {
     const { reviewId } = await create();
     const other = await create();
     const document = store.read(reviewId);
@@ -289,15 +299,23 @@ describe("snapshot authoring", () => {
 
     store.subscribe(documents);
     store.subscribeCatalog(catalog);
-    const dismiss = request({ type: "attention", reviewId, action: "dismiss" });
-    const result = await store.execute(dismiss);
+    const dismiss = request({ type: "lifecycle", reviewId, state: "trash" });
     await store.execute(
       request({ type: "attention", reviewId, action: "view" }),
     );
+    const viewedAt = store.summary(reviewId)!.viewedAt;
+    const result = await store.execute(dismiss);
+    await expect(
+      store.execute(request({ type: "attention", reviewId, action: "view" })),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(store.summary(reviewId)!.viewedAt).toBe(viewedAt);
     expect(result).toMatchObject({ version: 0, attention: true });
-    expect(documents).not.toHaveBeenCalled();
+    expect(documents).toHaveBeenCalledOnce();
     expect(catalog).toHaveBeenCalledTimes(2);
-    expect(store.read(reviewId)).toEqual(document);
+    expect(store.read(reviewId)).toEqual({
+      ...document,
+      trashedAt: expect.any(String),
+    });
     expect(store.history(reviewId)).toHaveLength(1);
     await store.close();
     store = new ReviewStore(database, providers);
@@ -305,20 +323,120 @@ describe("snapshot authoring", () => {
       store.list().find((review) => review.reviewId === reviewId),
     ).toMatchObject({
       viewedAt: expect.any(String),
-      dismissedAt: expect.any(String),
+      trashedAt: expect.any(String),
     });
     expect(
       store.list().find((review) => review.reviewId === other.reviewId),
     ).toMatchObject({
       viewedAt: null,
-      dismissedAt: null,
+      trashedAt: null,
     });
     await store.execute(
-      request({ type: "attention", reviewId, action: "restore" }),
+      request({ type: "lifecycle", reviewId, state: "active" }),
     );
     expect(
-      store.list().find((review) => review.reviewId === reviewId)?.dismissedAt,
+      store.list().find((review) => review.reviewId === reviewId)?.trashedAt,
     ).toBeNull();
+    expect(store.summary(reviewId)!.viewedAt).toBe(viewedAt);
+  });
+
+  it("keeps deleted boards and history read-only until restored, across restart", async () => {
+    const { reviewId } = await create();
+    await edit(reviewId, {
+      type: "insert",
+      content: { type: "markdown", markdown: "Retained content" },
+    });
+    const version = store.read(reviewId).version;
+    await store.execute(
+      request({ type: "lifecycle", state: "trash", reviewId }),
+    );
+    const trashedAt = store.summary(reviewId)!.trashedAt;
+    expect(trashedAt).toBeTruthy();
+    expect(store.read(reviewId, 0).trashedAt).toBe(trashedAt);
+
+    for (const operation of [
+      { type: "rename", reviewId, title: "Overwritten" },
+      { type: "restore", reviewId, version: 0 },
+      {
+        type: "edit",
+        reviewId,
+        edit: {
+          type: "insert",
+          content: { type: "markdown", markdown: "Overwritten" },
+        },
+      },
+      { type: "set_target", reviewId, target: { kind: "commits", ...pins } },
+    ])
+      await expect(store.execute(request(operation))).rejects.toMatchObject({
+        status: 409,
+      });
+    expect(() => store.activity.update(reviewId, { action: "begin" })).toThrow(
+      ReviewInputError,
+    );
+    expect(store.read(reviewId).version).toBe(version);
+    expect(store.history(reviewId)).toHaveLength(2);
+    await store.close();
+    store = new ReviewStore(database, providers);
+    expect(store.summary(reviewId)!.trashedAt).toBe(trashedAt);
+    await store.execute(
+      request({ type: "lifecycle", reviewId, state: "active" }),
+    );
+    await store.execute(
+      request({ type: "rename", reviewId, title: "Restored and editable" }),
+    );
+    expect(store.read(reviewId).title).toBe("Restored and editable");
+    expect(store.read(reviewId).trashedAt).toBeNull();
+  });
+
+  it("purges after 30 days, including on restart, and preserves newer deleted boards", async () => {
+    vi.useFakeTimers({ now: new Date("2026-10-01T00:00:00Z") });
+    const old = await create();
+    await store.execute(
+      request({ type: "lifecycle", state: "trash", reviewId: old.reviewId }),
+    );
+    vi.setSystemTime(new Date("2026-10-02T00:00:00Z"));
+    const newer = await create();
+    await store.execute(
+      request({ type: "lifecycle", state: "trash", reviewId: newer.reviewId }),
+    );
+    const originalDeadline = store.read(old.reviewId).trashedAt;
+    await store.execute(
+      request({ type: "lifecycle", state: "trash", reviewId: old.reviewId }),
+    );
+    expect(store.read(old.reviewId).trashedAt).toBe(originalDeadline);
+    await store.close();
+    vi.setSystemTime(new Date("2026-10-30T23:59:59Z"));
+    store = new ReviewStore(database, providers);
+    expect(store.has(old.reviewId)).toBe(true);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(store.has(old.reviewId)).toBe(false);
+    expect(store.has(newer.reviewId)).toBe(true);
+    await store.close();
+    vi.setSystemTime(new Date("2026-11-02T00:00:00Z"));
+    store = new ReviewStore(database, providers);
+    expect(store.has(newer.reviewId)).toBe(false);
+  });
+
+  it("migrates Archive with a fresh recovery window instead of purging old archived boards", async () => {
+    const { reviewId } = await create();
+    await store.execute(
+      request({ type: "lifecycle", state: "trash", reviewId }),
+    );
+    await store.close();
+    const db = new DatabaseSync(database);
+    db.exec(
+      "ALTER TABLE review_attention RENAME COLUMN deleted_at TO dismissed_at",
+    );
+    db.prepare(
+      "UPDATE review_attention SET dismissed_at=? WHERE review_id=?",
+    ).run("2020-01-01T00:00:00Z", reviewId);
+    db.close();
+    const before = Date.now();
+    store = new ReviewStore(database, providers);
+    expect(
+      Date.parse(store.summary(reviewId)!.trashedAt!),
+    ).toBeGreaterThanOrEqual(before);
+    expect(store.history(reviewId)).toHaveLength(1);
   });
 
   it.each([
@@ -1355,7 +1473,7 @@ describe("snapshot authoring", () => {
     });
 
     const refused = [
-      { type: "delete", reviewId: SCRATCHPAD_ID },
+      { type: "lifecycle", state: "trash", reviewId: SCRATCHPAD_ID },
       { type: "attention", reviewId: SCRATCHPAD_ID, action: "view" },
       { type: "rename", reviewId: SCRATCHPAD_ID, title: "Notes" },
       {
@@ -1865,13 +1983,14 @@ it("serves the experiment through the real desktop HTTP server and existing auth
     const abort = new AbortController();
     const catalog = client.watch(null, abort.signal);
     expect(reviewsOnly((await catalog.next()).value)).toMatchObject([
-      { reviewId, dismissedAt: null },
+      { reviewId, trashedAt: null },
     ]);
-    await post({ type: "attention", reviewId, action: "dismiss" });
+    await post({ type: "lifecycle", reviewId, state: "trash" });
     expect(reviewsOnly((await catalog.next()).value)).toMatchObject([
-      { reviewId, dismissedAt: expect.any(String) },
+      { reviewId, trashedAt: expect.any(String) },
     ]);
     await catalog.return(undefined);
+    await post({ type: "lifecycle", reviewId, state: "active" });
     const live = client.watch(reviewId, abort.signal);
     expect((await live.next()).value).toMatchObject({
       reviewId,
@@ -1925,6 +2044,10 @@ it("serves the experiment through the real desktop HTTP server and existing auth
     const watching = client.watch(reviewId, new AbortController().signal);
     await watching.next();
 
+    await post({ type: "lifecycle", state: "trash", reviewId });
+    expect((await watching.next()).value).toMatchObject({
+      trashedAt: expect.any(String),
+    });
     await Promise.all([
       expect(watching.next()).rejects.toThrow(Error),
       post({ type: "delete", reviewId }).then((response) => {

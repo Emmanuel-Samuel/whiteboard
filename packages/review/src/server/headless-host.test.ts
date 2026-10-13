@@ -295,6 +295,13 @@ it("shares review identity, resources, sessions and live changes with Desktop in
       await server.client.read(`/${created.reviewId}?full=true`),
     ).toMatchObject({ title: "Changed in Desktop", version: 2 });
     await server.client.post("/commands", {
+      operation: {
+        type: "lifecycle",
+        state: "trash",
+        reviewId: created.reviewId,
+      },
+    });
+    await server.client.post("/commands", {
       operation: { type: "delete", reviewId: created.reviewId },
     });
     await expect(async () => {

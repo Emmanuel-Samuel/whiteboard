@@ -18,7 +18,10 @@ test("public session tools create, edit and retry against the unchanged review s
   });
 
   stores.push(store);
-  const app = createReviewApi(store);
+
+  const app = createReviewApi(store, undefined, async () => ({
+    softwareMapEnabled: false,
+  }));
 
   const client = new ReviewApiClient(
     { serverUrl: "http://test", token: "test" },
@@ -69,6 +72,34 @@ test("public session tools create, edit and retry against the unchanged review s
   await expect(call("session_get", { reviewId: sessionId })).rejects.toThrow(
     "Use sessionId",
   );
+  await expect(call("session_delete", { sessionId })).rejects.toThrow(/Trash/);
+  expect(store.read(sessionId).version).toBe(1);
+  await call("session_lifecycle", { sessionId, state: "trash" });
+  expect(store.read(sessionId).trashedAt).toBeTruthy();
+  await expect(
+    call("session_attention", { sessionId, action: "view" }),
+  ).rejects.toThrow(/session_lifecycle/);
+  await expect(call("session_open", { sessionId })).rejects.toThrow(
+    /session_lifecycle/,
+  );
+  expect(store.summary(sessionId)?.viewedAt).toBeNull();
+  expect(store.read(sessionId).trashedAt).toBeTruthy();
+  await expect(
+    call("session_restore_version", { sessionId, version: 0 }),
+  ).rejects.toThrow(/Trash/);
+  await call("session_lifecycle", { sessionId, state: "active" });
+  expect(store.read(sessionId).trashedAt).toBeNull();
+  await call("session_open", { sessionId });
+  await call("session_attention", { sessionId, action: "view" });
+  expect(store.summary(sessionId)?.viewedAt).toEqual(expect.any(String));
+  expect(store.read(sessionId).version).toBe(1);
+  await call("session_restore_version", { sessionId, version: 0 });
+  expect(store.read(sessionId).version).toBe(2);
+  expect(JSON.stringify(store.read(sessionId).document)).not.toContain(literal);
+  await call("session_lifecycle", { sessionId, state: "trash" });
+  await call("session_delete", { sessionId });
+  expect(store.has(sessionId)).toBe(false);
+  expect(store.history(sessionId)).toEqual([]);
 });
 
 test("response translation leaves authored and arbitrary payload fields intact", () => {
