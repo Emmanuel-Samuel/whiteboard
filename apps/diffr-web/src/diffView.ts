@@ -242,10 +242,11 @@ export class DiffView extends Disposable {
       this.onDidScroll(() => this.sidebar.setActiveFile(this.activePath)),
     );
 
+    // Rows are drawn for their screen: a phone's gutter, row heights and tap targets differ.
     const screen = () => {
       this.compact = mobileViewport.matches;
       this.applyScreen();
-      this.relayout();
+      this.relayout(true);
     };
 
     mobileViewport.addEventListener("change", screen);
@@ -443,13 +444,16 @@ export class DiffView extends Disposable {
     this.sidebar.hidden = this.compact || this.sidebarHidden;
   }
 
-  /** Draw the drawn files again, for a new layout, keeping the reader's row in place. */
-  private relayout(): void {
+  /**
+   * Draw the drawn files again, for a new layout or, with `screen`, a new screen, keeping the
+   * reader's row in place.
+   */
+  private relayout(screen = false): void {
     const split = this.wantsSplit();
     const changed = split !== this.split;
     this.split = split;
 
-    if (!changed && !split) return;
+    if (!changed && !split && !screen) return;
     this.preserve(() => {
       for (const file of this.order) if (file.built) this.renderBody(file);
     });
