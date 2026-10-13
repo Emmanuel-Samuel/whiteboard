@@ -53,6 +53,11 @@ const setTheme = applyTheme(root);
 
 const header = root.appendChild(element("header", "app-header"));
 
+// A phone's file headers stick below the page's own, which stays as the page scrolls.
+new ResizeObserver(() =>
+  root.style.setProperty("--dv-top", `${header.offsetHeight}px`),
+).observe(header);
+
 let headerUpdatePending = false;
 
 const status = root.appendChild(element("div", "app-status"));

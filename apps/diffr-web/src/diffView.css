@@ -465,17 +465,11 @@
   box-sizing: border-box;
   width: var(--dv-width, 100vw);
   min-height: 44px;
-  padding: 0 12px 0 0;
+  display: flex;
   border-block: 1px solid var(--vscode-panel-border);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 13px;
   line-height: 1.4;
   color: var(--vscode-descriptionForeground);
-  background: color-mix(
-    in srgb,
-    var(--vscode-sideBar-background) 60%,
-    var(--vscode-editor-background)
-  );
+  background: var(--vscode-editor-background);
   white-space: normal;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -491,21 +485,48 @@
   background: var(--vscode-toolbar-hoverBackground);
 }
 
+/* As wide as the rows' gutter, in their font, so its chevron lines up with theirs. */
+.dv-band-gutter {
+  flex: none;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: calc(var(--dv-digits, 3) * 1ch + 36px);
+  min-height: inherit;
+  padding-left: 8px;
+  border-right: 1px solid var(--vscode-panel-border);
+}
+
+.no-numbers .dv-band-gutter {
+  width: 28px;
+}
+
+.dv-band-main {
+  flex: 1;
+  min-width: 0;
+  padding-right: 12px;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 5px,
+    var(--vscode-diffEditor-diagonalFill, rgba(128, 128, 128, 0.18)) 5px 6px
+  );
+}
+
 .dv-band:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 
-.dv-band.kind-inserted {
+.dv-band.kind-inserted > .dv-band-gutter {
   box-shadow: inset 3px 0 0 var(--vscode-gitDecoration-addedResourceForeground);
 }
 
-.dv-band.kind-removed {
+.dv-band.kind-removed > .dv-band-gutter {
   box-shadow: inset 3px 0 0
     var(--vscode-gitDecoration-deletedResourceForeground);
 }
 
-.dv-band.kind-modified {
+.dv-band.kind-modified > .dv-band-gutter {
   box-shadow: inset 3px 0 0
     var(--vscode-gitDecoration-modifiedResourceForeground);
 }
@@ -515,12 +536,12 @@
   align-items: center;
   gap: 8px;
   min-height: 44px;
-  padding-left: calc(8px + min(var(--dv-indent, 0), 8) * 0.5ch);
+  padding-left: 8px;
 }
 
 .dv-band-chevron {
   flex: none;
-  width: 28px;
+  width: 12px;
   height: 12px;
   background: currentColor;
   mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M4.25 2.5 8 6l-3.75 3.5' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>")
@@ -544,10 +565,14 @@
   overflow-wrap: anywhere;
 }
 
+.dv-band-label::before {
+  content: "⋯ ";
+}
+
 /* A summary reads as prose at the screen's width: wrapped, with each line hanging from its own
    indent, at a size meant for reading rather than scanning. */
 .dv-pseudocode {
-  margin: 0 0 12px calc(44px + min(var(--dv-indent, 0), 8) * 0.5ch);
+  margin: 0 0 12px calc(8px + min(var(--dv-indent, 0), 8) * 0.5ch);
   padding: 8px 12px;
   border-left: 2px solid var(--dv-comment, var(--vscode-descriptionForeground));
   border-radius: 0 6px 6px 0;
@@ -775,8 +800,8 @@ a.dv-open.codicon {
   min-height: 28px;
 }
 
-.dv:not(.is-compact) .dv-band {
-  font-size: 12px;
+.dv:not(.is-compact) .dv-rows:not(.is-split) .dv-band-gutter {
+  width: calc(var(--dv-digits, 3) * 2ch + 44px);
 }
 
 .dv:not(.is-compact) .dv-band:hover {
@@ -784,7 +809,7 @@ a.dv-open.codicon {
 }
 
 .dv:not(.is-compact) .dv-pseudocode {
-  margin: 0 0 8px calc(40px + min(var(--dv-indent, 0), 8) * 0.5ch);
+  margin: 0 0 8px calc(8px + min(var(--dv-indent, 0), 8) * 0.5ch);
   padding: 6px 12px;
   font-size: 12px;
   line-height: 1.5;
@@ -794,9 +819,23 @@ a.dv-open.codicon {
   font-size: 11px;
 }
 
-/* A phone pinches to fold, so the page never zooms under the diff. */
+/* A phone pinches to fold, so the page never zooms under the diff. It scrolls the page, not the
+   list: iOS draws an inner scroller's bar under the sticky file headers. */
 .dv.is-compact {
+  height: auto;
+  overflow: visible;
+  overflow-x: clip;
+  overscroll-behavior-y: auto;
   touch-action: pan-x pan-y;
+}
+
+.dv.is-compact .dv-header {
+  top: var(--dv-top, 0px);
+}
+
+.dv-host:has(> .dv.is-compact) {
+  display: block;
+  height: auto;
 }
 
 /* Rails are drawn in the block, pane or grid that holds their rows. */

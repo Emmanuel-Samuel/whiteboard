@@ -803,8 +803,31 @@ body {
   outline: 1px solid var(--vscode-focusBorder);
 }
 @media (max-width: 760px), (pointer: coarse) and (max-height: 500px) {
+  /* A phone scrolls the page, header and diff together (diffView.css). */
+  html,
+  body {
+    height: auto;
+  }
+  body {
+    overflow: visible;
+  }
   .app {
-    height: 100dvh;
+    position: static;
+    min-height: 100dvh;
+  }
+  .app-body {
+    flex: 1 0 auto;
+  }
+  .app-header {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+  }
+  .app-comparison {
+    position: static;
+  }
+  .app-find {
+    position: fixed;
   }
   .app-header {
     display: grid;

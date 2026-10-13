@@ -199,12 +199,13 @@ export class DiffView extends Disposable {
   private readonly bySection = new WeakMap<Element, FileView>();
   private order: FileView[] = [];
   private progress: ReviewDiffProgress | undefined;
-  private readonly build: IntersectionObserver;
-  private readonly release: IntersectionObserver;
-  private readonly chunkBuild: IntersectionObserver;
-  private readonly chunkRelease: IntersectionObserver;
+  // Made again by watch() when a phone's page, not the list, becomes what scrolls.
+  private build!: IntersectionObserver;
+  private release!: IntersectionObserver;
+  private chunkBuild!: IntersectionObserver;
+  private chunkRelease!: IntersectionObserver;
   private readonly chunkOf = new WeakMap<Element, Chunk>();
-  private readonly request: IntersectionObserver;
+  private request!: IntersectionObserver;
   private scrollFrame = 0;
   /** A selection when the press began: the tap ends it, and must not fold anything. */
   private pressedOverSelection = false;
@@ -244,8 +245,11 @@ export class DiffView extends Disposable {
 
     // Rows are drawn for their screen: a phone's gutter, row heights and tap targets differ.
     const screen = () => {
+      const scroller = this.compact !== mobileViewport.matches;
       this.compact = mobileViewport.matches;
       this.applyScreen();
+
+      if (scroller) this.watch();
       this.relayout(true);
     };
 
@@ -255,46 +259,7 @@ export class DiffView extends Disposable {
     );
     this._register(layout.onDidChange(() => this.relayout()));
 
-    this.build = new IntersectionObserver(
-      (entries) => this.preserve(() => this.onBuild(entries)),
-      { root: this.root, rootMargin: BUILD_MARGIN },
-    );
-    this.release = new IntersectionObserver(
-      (entries) => this.onRelease(entries),
-      { root: this.root, rootMargin: RELEASE_MARGIN },
-    );
-    this.chunkBuild = new IntersectionObserver(
-      (entries) =>
-        this.preserve(() => {
-          for (const entry of entries) {
-            const chunk = this.chunkOf.get(entry.target);
-
-            if (entry.isIntersecting && chunk) this.fillChunk(chunk);
-          }
-        }),
-      { root: this.root, rootMargin: BUILD_MARGIN },
-    );
-    this.chunkRelease = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const chunk = this.chunkOf.get(entry.target);
-
-          if (!entry.isIntersecting && chunk) this.emptyChunk(chunk);
-        }
-      },
-      { root: this.root, rootMargin: RELEASE_MARGIN },
-    );
-    this.request = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const file = this.bySection.get(entry.target);
-
-          if (entry.isIntersecting && file?.state === LOADING)
-            this._onDidRequestFile.fire(file.entry.file.path);
-        }
-      },
-      { root: this.root },
-    );
+    this.watch();
     this._register(
       toDisposable(() => {
         this.build.disconnect();
@@ -311,17 +276,18 @@ export class DiffView extends Disposable {
       }),
     );
 
-    this.root.addEventListener(
-      "scroll",
-      () => {
-        if (this.scrollFrame) return;
-        this.scrollFrame = requestAnimationFrame(() => {
-          this.scrollFrame = 0;
-          this._onDidScroll.fire();
-        });
-      },
-      { passive: true },
-    );
+    const scrolled = () => {
+      if (this.scrollFrame) return;
+      this.scrollFrame = requestAnimationFrame(() => {
+        this.scrollFrame = 0;
+        this._onDidScroll.fire();
+      });
+    };
+
+    this.root.addEventListener("scroll", scrolled, { passive: true });
+    // A phone scrolls the page instead.
+    addEventListener("scroll", scrolled, { passive: true });
+    this._register(toDisposable(() => removeEventListener("scroll", scrolled)));
     this.root.addEventListener(
       "pointerdown",
       (event) => {
@@ -412,6 +378,75 @@ export class DiffView extends Disposable {
       ),
     );
     this._register(this.scopes.onDidChange(() => this.syncViewed()));
+  }
+
+  /** Watch files and their blocks come near the screen, to draw them, and leave it, to free them. */
+  private watch(): void {
+    const old = this.build && [
+      this.build,
+      this.release,
+      this.chunkBuild,
+      this.chunkRelease,
+      this.request,
+    ];
+
+    for (const observer of old || []) observer.disconnect();
+    // A phone scrolls the page, not the list, so iOS draws its scroll bar over the file headers.
+    const root = this.compact ? null : this.root;
+
+    this.build = new IntersectionObserver(
+      (entries) => this.preserve(() => this.onBuild(entries)),
+      { root, rootMargin: BUILD_MARGIN },
+    );
+    this.release = new IntersectionObserver(
+      (entries) => this.onRelease(entries),
+      { root, rootMargin: RELEASE_MARGIN },
+    );
+    this.chunkBuild = new IntersectionObserver(
+      (entries) =>
+        this.preserve(() => {
+          for (const entry of entries) {
+            const chunk = this.chunkOf.get(entry.target);
+
+            if (entry.isIntersecting && chunk) this.fillChunk(chunk);
+          }
+        }),
+      { root, rootMargin: BUILD_MARGIN },
+    );
+    this.chunkRelease = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const chunk = this.chunkOf.get(entry.target);
+
+          if (!entry.isIntersecting && chunk) this.emptyChunk(chunk);
+        }
+      },
+      { root, rootMargin: RELEASE_MARGIN },
+    );
+    this.request = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const file = this.bySection.get(entry.target);
+
+          if (entry.isIntersecting && file?.state === LOADING)
+            this._onDidRequestFile.fire(file.entry.file.path);
+        }
+      },
+      { root },
+    );
+
+    if (!old) return;
+
+    for (const file of this.order) {
+      this.build.observe(file.section);
+      this.release.observe(file.section);
+      this.request.observe(file.section);
+
+      for (const chunk of file.chunks) {
+        this.chunkBuild.observe(chunk.element);
+        this.chunkRelease.observe(chunk.element);
+      }
+    }
   }
 
   /** The theme's colour for each of diffr's syntax roles, as CSS variables. */
@@ -961,8 +996,8 @@ export class DiffView extends Disposable {
 
   /** Draw a file's blocks that are on or near the screen now, so it never shows empty. */
   private fillNear(file: FileView): void {
-    const view = this.root.getBoundingClientRect();
-    const margin = this.root.clientHeight * 1.5;
+    const view = this.view();
+    const margin = view.height * 1.5;
 
     for (const chunk of file.chunks) {
       const bounds = chunk.element.getBoundingClientRect();
@@ -1236,17 +1271,21 @@ export class DiffView extends Disposable {
       "aria-label",
       `Expand ${band.hidden} hidden line${band.hidden === 1 ? "" : "s"}${summary ? ", summarized" : `: ${band.title}`}`,
     );
-    const title = node.appendChild(element("span", "dv-band-title"));
+    // Its chevron sits in the gutter, in line with the rows' own fold chevrons.
+    const gutter = node.appendChild(element("span", "dv-band-gutter"));
 
     // A scope's header chevron already opens it; one control per fold.
     if (!context.headed.has(band.foldStateId))
-      title.append(element("span", "dv-band-chevron"));
+      gutter.append(element("span", "dv-band-chevron"));
+
+    const main = node.appendChild(element("span", "dv-band-main"));
+    const title = main.appendChild(element("span", "dv-band-title"));
 
     if (summary) title.append(element("span", "dv-band-caption", "Pseudocode"));
     title.append(element("span", "dv-band-label", band.title));
 
     if (summary) {
-      const detail = node.appendChild(element("div", "dv-pseudocode"));
+      const detail = main.appendChild(element("div", "dv-pseudocode"));
 
       for (const text of band.detail) {
         const line = detail.appendChild(
@@ -1365,12 +1404,46 @@ export class DiffView extends Disposable {
       );
   }
 
+  /** The part of the screen the list shows: its own box, or on a phone the window's share of it. */
+  private view() {
+    const bounds = this.root.getBoundingClientRect();
+
+    if (!this.compact) return bounds;
+
+    // The page's header stays over the list's top as it scrolls.
+    const header =
+      parseFloat(getComputedStyle(this.root).getPropertyValue("--dv-top")) || 0;
+
+    const top = Math.max(bounds.top, header);
+    const bottom = Math.min(bounds.bottom, innerHeight);
+
+    return {
+      left: bounds.left,
+      width: bounds.width,
+      top,
+      bottom,
+      height: bottom - top,
+    };
+  }
+
+  /** How far the list is scrolled: its own box, or on a phone the page past its top. */
+  private get scrolledTo(): number {
+    return this.compact
+      ? this.view().top - this.root.getBoundingClientRect().top
+      : this.root.scrollTop;
+  }
+
+  private scrollBy(delta: number): void {
+    if (this.compact) window.scrollBy(0, delta);
+    else this.root.scrollTop += delta;
+  }
+
   /**
    * Keep the row at the top of the screen where it is while `change` redraws what is above or
    * around it. Browsers anchor scrolling on their own only when they redraw in place.
    */
   private preserve(change: () => void): void {
-    const top = this.root.getBoundingClientRect().top;
+    const top = this.view().top;
     const anchor = this.anchor(top);
     change();
 
@@ -1380,11 +1453,11 @@ export class DiffView extends Disposable {
     if (!node) return;
     const delta = node.getBoundingClientRect().top - top - anchor.offset;
 
-    if (Math.abs(delta) >= 1) this.root.scrollTop += delta;
+    if (Math.abs(delta) >= 1) this.scrollBy(delta);
   }
 
   private anchor(top: number) {
-    const bounds = this.root.getBoundingClientRect();
+    const bounds = this.view();
 
     if (!bounds.height) return undefined;
 
@@ -1427,7 +1500,7 @@ export class DiffView extends Disposable {
 
   /** The topmost file on screen. */
   get activePath(): string | undefined {
-    const top = this.root.scrollTop;
+    const top = this.scrolledTo;
     const visible = this.order.filter((file) => !file.section.hidden);
 
     let low = 0,
@@ -1455,7 +1528,7 @@ export class DiffView extends Disposable {
 
     if (open) this.setFileCollapsed(path, false);
     this.settle(() => {
-      this.root.scrollTop = file.section.offsetTop;
+      this.scrollBy(file.section.offsetTop - this.scrolledTo);
 
       return true;
     });
@@ -1476,12 +1549,12 @@ export class DiffView extends Disposable {
 
       if (!row) return false;
 
-      const delta =
-        row.getBoundingClientRect().top -
-        this.root.getBoundingClientRect().top -
-        this.root.clientHeight / 3;
+      const view = this.view();
 
-      if (Math.abs(delta) > 1) this.root.scrollTop += delta;
+      const delta =
+        row.getBoundingClientRect().top - view.top - view.height / 3;
+
+      if (Math.abs(delta) > 1) this.scrollBy(delta);
       row.classList.remove("is-revealed");
       void row.offsetWidth;
       row.classList.add("is-revealed");
@@ -1532,8 +1605,8 @@ export class DiffView extends Disposable {
   /** The next or previous run of changes, drawing the files it passes. */
   goToChange(direction: "next" | "previous"): void {
     // Changes land on the reading line, a third of the way down, so they are measured from it.
-    const line =
-      this.root.getBoundingClientRect().top + this.root.clientHeight / 3;
+    const view = this.view();
+    const line = view.top + view.height / 3;
 
     const active = this.order.findIndex(
       (file) => file.entry.file.path === this.activePath,
@@ -1578,7 +1651,7 @@ export class DiffView extends Disposable {
                 .find((node) => node.getBoundingClientRect().top - line < -8);
 
         if (target) {
-          this.root.scrollTop += target.getBoundingClientRect().top - line;
+          this.scrollBy(target.getBoundingClientRect().top - line);
 
           return;
         }
@@ -1589,9 +1662,10 @@ export class DiffView extends Disposable {
   scroll(to: number | "top" | "end"): void {
     this.reveal?.cancel();
 
-    if (to === "top") this.root.scrollTop = 0;
-    else if (to === "end") this.root.scrollTop = this.root.scrollHeight;
-    else this.root.scrollTop += to;
+    // A phone's page goes back above the list, to its header.
+    if (to === "top") this.scrollBy(this.compact ? -scrollY : -this.scrolledTo);
+    else if (to === "end") this.scrollBy(this.root.scrollHeight);
+    else this.scrollBy(to);
   }
 
   focus(): void {
@@ -2310,6 +2384,7 @@ export class DiffView extends Disposable {
 
     if (!sheet) document.addEventListener("pointerdown", onPointer, true);
     this.root.addEventListener("scroll", close, { passive: true });
+    addEventListener("scroll", close, { passive: true });
 
     this.scopeList = {
       list,
@@ -2318,6 +2393,7 @@ export class DiffView extends Disposable {
         document.removeEventListener("keydown", onKey, true);
         document.removeEventListener("pointerdown", onPointer, true);
         this.root.removeEventListener("scroll", close);
+        removeEventListener("scroll", close);
       },
     };
 
@@ -2408,13 +2484,13 @@ export class DiffView extends Disposable {
         ?.body.querySelector<HTMLElement>(this.caret.selector);
 
       const bounds = row?.getBoundingClientRect();
-      const view = this.root.getBoundingClientRect();
+      const view = this.view();
 
       if (row && bounds && bounds.bottom > view.top && bounds.top < view.bottom)
         return row;
     }
 
-    const view = this.root.getBoundingClientRect();
+    const view = this.view();
 
     return (
       document
@@ -2448,10 +2524,10 @@ export class DiffView extends Disposable {
     if (!scroll) return;
     row.classList.add("is-caret");
     const bounds = row.getBoundingClientRect();
-    const view = this.root.getBoundingClientRect();
+    const view = this.view();
 
     if (bounds.top < view.top + 40 || bounds.bottom > view.bottom - 40)
-      this.root.scrollTop += bounds.top - view.top - this.root.clientHeight / 3;
+      this.scrollBy(bounds.top - view.top - view.height / 3);
   }
 
   // Review Desktop's surface for find in its editors: these rows are no editor.
