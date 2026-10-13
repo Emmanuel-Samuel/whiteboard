@@ -105,6 +105,9 @@ export function ReviewHome({
 }: ReviewHomeProps) {
   const helpTooltip = useTooltip("Help", { instant: true });
   const settingsTooltip = useTooltip("Settings", { instant: true });
+  const clearTooltip = useTooltip("Clear filters", { instant: true });
+  const filterTooltip = useTooltip("Filter", { instant: true });
+  const sortTooltip = useTooltip("Sort", { instant: true });
 
   const [filterState, setFilterState] = useState({
     filters: defaultHomeFilters,
@@ -142,7 +145,17 @@ export function ReviewHome({
   } | null>(null);
 
   const addFilter = useRef<HTMLButtonElement>(null);
-  const addChip = useRef<HTMLButtonElement>(null);
+
+  const setAddFilter = useCallback(
+    (element: HTMLButtonElement | null) => {
+      addFilter.current = element;
+
+      return filterTooltip(element);
+    },
+    [filterTooltip],
+  );
+
+  const chipRow = useRef<HTMLDivElement>(null);
   const [sort, setSort] = useState<HomeSort>("updated");
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [selected, setSelected] = useState(new Set<string>());
@@ -296,6 +309,10 @@ export function ReviewHome({
     editingSearch === "" ? [...chipOrder, "draft"] : chipOrder;
 
   useLayoutEffect(() => {
+    chipRow.current?.scrollTo({ left: chipRow.current.scrollWidth });
+  }, [renderedChips.length]);
+
+  useLayoutEffect(() => {
     if (
       picker &&
       picker.section !== "all" &&
@@ -318,14 +335,8 @@ export function ReviewHome({
         return;
       }
 
-      const anchor = addChip.current ?? addFilter.current;
-
-      if (anchor)
-        setPicker({
-          ...picker,
-          anchor,
-          alignment: addChip.current ? "start" : "end",
-        });
+      if (addFilter.current)
+        setPicker({ ...picker, anchor: addFilter.current, alignment: "end" });
     }
   }, [picker, renderedChips]);
 
@@ -424,8 +435,12 @@ export function ReviewHome({
 
   function finishTextFilter(discard = false) {
     if (editingSearch === null) return;
-    const term = discard ? "" : query.trim();
-    const previous = editingSearch;
+    applySearch(editingSearch, discard ? "" : query.trim());
+    setEditingSearch(null);
+    setQuery("");
+  }
+
+  function applySearch(previous: string, term: string) {
     setFilterState((current) => {
       const searches = current.filters.searches.filter(
         (value) => `search:${value}` !== previous,
@@ -449,8 +464,6 @@ export function ReviewHome({
         ],
       };
     });
-    setEditingSearch(null);
-    setQuery("");
   }
 
   function clearSelection() {
@@ -949,105 +962,87 @@ export function ReviewHome({
         <div {...stylex.props(homeStyles.content, styles.content)}>
           <header {...stylex.props(styles.header)}>
             {inTrash ? (
-              <>
-                <div {...stylex.props(styles.deletedHeading)}>
-                  <h1 {...stylex.props(styles.deletedTitle)}>Trash</h1>
-                  <span {...stylex.props(styles.deletedSeparator)}>
-                    {trashed.length}
-                  </span>
-                </div>
-                <p {...stylex.props(styles.retentionNote)}>
-                  Whiteboards in Trash are permanently deleted after 30 days.
-                </p>
-              </>
+              <div {...stylex.props(styles.deletedHeading)}>
+                <button
+                  type="button"
+                  {...stylex.props(styles.crumb)}
+                  onClick={() => openDeletedView(false)}
+                >
+                  Whiteboards
+                </button>
+                <span aria-hidden="true" {...stylex.props(styles.muted)}>
+                  ›
+                </span>
+                <h1 {...stylex.props(styles.deletedTitle)}>Trash</h1>
+                <span {...stylex.props(styles.deletedSeparator)}>
+                  {trashed.length}
+                </span>
+              </div>
             ) : (
               <h1 {...stylex.props(styles.heading)}>Whiteboards</h1>
             )}
-            <div
-              hidden={inTrash}
-              {...stylex.props(
-                styles.controls,
-                styles.headerControls,
-                inTrash && styles.hidden,
-              )}
-            >
-              <div ref={helpRef} {...stylex.props(styles.helpWrap)}>
+            {renderedChips.length > 0 && (
+              <div
+                ref={chipRow}
+                aria-label="Active filters"
+                {...stylex.props(styles.chips)}
+              >
+                {renderedChips.map(renderChip)}
+              </div>
+            )}
+            <div {...stylex.props(styles.controls, styles.headerFilters)}>
+              {renderedChips.length > 0 && (
                 <button
                   type="button"
-                  aria-label="Help"
-                  ref={helpTooltip}
-                  aria-haspopup="menu"
-                  aria-expanded={helpOpen}
-                  {...stylex.props(
-                    styles.iconButton,
-                    styles.headerIconButton,
-                    helpOpen && styles.headerIconOpen,
-                  )}
-                  onClick={() => setHelpOpen(!helpOpen)}
+                  aria-label="Clear filters"
+                  ref={clearTooltip}
+                  {...stylex.props(styles.iconButton, styles.headerIconButton)}
+                  onClick={clearFilters}
                 >
-                  <HomeIcon kind="help" />
+                  <HomeIcon kind="clearFilters" />
                 </button>
-                {helpOpen && (
-                  <MenuSurface
-                    role="menu"
-                    tabIndex={-1}
-                    aria-label="Help"
-                    xstyle={styles.menu}
-                    onClose={() => {
-                      setHelpOpen(false);
-                      helpRef.current?.querySelector("button")?.focus();
-                    }}
-                  >
-                    <button
-                      role="menuitem"
-                      {...stylex.props(menuSurfaceStyles.item)}
-                      disabled={!onOpenTutorial}
-                      onClick={() => {
-                        setHelpOpen(false);
-                        onOpenTutorial?.();
-                      }}
-                    >
-                      Need a refresher? Take the tour
-                    </button>
-                    <hr {...stylex.props(styles.divider)} />
-                    <a
-                      role="menuitem"
-                      {...stylex.props(menuSurfaceStyles.item)}
-                      href={REVIEW_DISCORD_URL}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Ask on Discord ↗
-                    </a>
-                    <button
-                      role="menuitem"
-                      {...stylex.props(
-                        menuSurfaceStyles.item,
-                        styles.copyEmail,
-                      )}
-                      onClick={async () => {
-                        const copied = await copyText("founders@dev.fast");
-                        setCopyNotice({ copied });
-                      }}
-                    >
-                      Need help? Send us an email
-                      <CopyIcon />
-                    </button>
-                  </MenuSurface>
-                )}
-              </div>
+              )}
               <button
-                type="button"
-                aria-label="Settings"
-                ref={settingsTooltip}
-                disabled={!onOpenSettings}
-                {...stylex.props(styles.iconButton, styles.headerIconButton)}
-                onClick={onOpenSettings}
+                ref={setAddFilter}
+                aria-label="Add filters"
+                aria-haspopup="dialog"
+                aria-expanded={picker?.anchor === addFilter.current}
+                {...stylex.props(
+                  styles.control,
+                  styles.toolbarControl,
+                  styles.filterButton,
+                  picker?.anchor === addFilter.current &&
+                    styles.addFilterActive,
+                )}
+                onClick={(event) => openPicker(event.currentTarget, "end")}
               >
-                <HomeIcon kind="settings" />
+                <HomeIcon kind="filter" />
               </button>
+              <OptionMenu<HomeSort>
+                ariaLabel="Sort whiteboards"
+                value={sort}
+                options={[
+                  ...(inTrash
+                    ? [{ value: "trash" as const, label: "Trashed" }]
+                    : []),
+                  { value: "updated", label: "Updated" },
+                  { value: "created", label: "Created" },
+                  { value: "title", label: "Title" },
+                ]}
+                onChange={setSort}
+                triggerStyle={[styles.control, styles.toolbarControl]}
+                triggerRef={sortTooltip}
+              >
+                <HomeIcon kind="sort" size="small" />
+                {sort[0].toUpperCase() + sort.slice(1)}
+              </OptionMenu>
             </div>
           </header>
+          {inTrash && (
+            <p {...stylex.props(styles.retentionNote)}>
+              Trash is deleted after 30 days.
+            </p>
+          )}
           {setupIncomplete ? (
             <div {...stylex.props(styles.notice)}>
               <span {...stylex.props(styles.noticeText)}>
@@ -1087,102 +1082,27 @@ export function ReviewHome({
             </div>
           ) : null}
           {error && <p role="alert">{error}</p>}
-          <div {...stylex.props(styles.filterRegion)}>
-            <div {...stylex.props(styles.toolbar)}>
-              <div aria-label="Active filters" {...stylex.props(styles.chips)}>
-                {renderedChips.map((id, index) =>
-                  index === renderedChips.length - 1 ? (
-                    <span
-                      key={id}
-                      data-chip-tail
-                      {...stylex.props(styles.chipTail)}
-                    >
-                      {renderChip(id)}
-                      <button
-                        ref={addChip}
-                        aria-label="Add filter"
-                        title="Add filter  F"
-                        aria-haspopup="dialog"
-                        aria-expanded={picker?.anchor === addChip.current}
-                        {...stylex.props(styles.addFilter)}
-                        onClick={(event) =>
-                          openPicker(event.currentTarget, "start")
-                        }
-                      >
-                        +
-                      </button>
-                    </span>
-                  ) : (
-                    renderChip(id)
-                  ),
-                )}
-              </div>
-              <div {...stylex.props(styles.controls)}>
-                {renderedChips.length > 0 && (
-                  <button
-                    {...stylex.props(styles.clearAll)}
-                    onClick={clearFilters}
-                  >
-                    Clear all
-                  </button>
-                )}
-                <button
-                  ref={addFilter}
-                  aria-label="Add filters"
-                  title="Add filter  F"
-                  aria-haspopup="dialog"
-                  aria-expanded={picker?.anchor === addFilter.current}
-                  {...stylex.props(
-                    styles.control,
-                    styles.toolbarControl,
-                    styles.filterButton,
-                    picker?.anchor === addFilter.current &&
-                      styles.addFilterActive,
-                  )}
-                  onClick={(event) => openPicker(event.currentTarget, "end")}
-                >
-                  <HomeIcon kind="filter" />
-                  Filter
-                </button>
-                <OptionMenu<HomeSort>
-                  ariaLabel="Sort whiteboards"
-                  value={sort}
-                  options={[
-                    ...(inTrash
-                      ? [{ value: "trash" as const, label: "Trashed" }]
-                      : []),
-                    { value: "updated", label: "Updated" },
-                    { value: "created", label: "Created" },
-                    { value: "title", label: "Title" },
-                  ]}
-                  onChange={setSort}
-                  triggerStyle={[styles.control, styles.toolbarControl]}
-                >
-                  <HomeIcon kind="sort" size="small" />
-                  <span {...stylex.props(styles.muted)}>Sort</span>
-                  {sort[0].toUpperCase() + sort.slice(1)}
-                </OptionMenu>
-              </div>
-            </div>
-            {picker !== null && (
-              <HomeFilterPicker
-                key={picker.section}
-                anchor={picker.anchor}
-                alignment={picker.alignment}
-                section={picker.section}
-                reviews={listed}
-                filters={appliedFilters}
-                query={query}
-                onChange={setFilters}
-                onSearch={() => startTextFilter()}
-                count={visible.length}
-                onClose={() => {
-                  setPicker(null);
-                  picker.anchor.focus();
-                }}
-              />
-            )}
-          </div>
+          {picker !== null && (
+            <HomeFilterPicker
+              key={picker.section}
+              anchor={picker.anchor}
+              alignment={picker.alignment}
+              section={picker.section}
+              reviews={listed}
+              filters={appliedFilters}
+              query={query}
+              onChange={setFilters}
+              onSearch={(term) => {
+                setPicker(null);
+                applySearch("", term);
+              }}
+              count={visible.length}
+              onClose={() => {
+                setPicker(null);
+                picker.anchor.focus();
+              }}
+            />
+          )}
           {!visible.length && (
             <p {...stylex.props(styles.muted)}>
               {hidden
@@ -1237,20 +1157,18 @@ export function ReviewHome({
                               : `${count} of ${group.reviews.length} selected`}
                           </span>
                         )}
-                        <button
-                          {...stylex.props(
-                            styles.control,
-                            styles.compactControl,
-                            styles.groupSelect,
-                          )}
-                          onClick={() => selectGroup(group.reviews)}
-                        >
-                          {count === group.reviews.length
-                            ? "Deselect"
-                            : count > 0
-                              ? "Select all"
-                              : `Select all ${group.reviews.length}`}
-                        </button>
+                        <SelectionCheckbox
+                          label={`Select ${group.label}`}
+                          title="Select group"
+                          checked={
+                            count === group.reviews.length
+                              ? true
+                              : count > 0 && "mixed"
+                          }
+                          hidden={count === 0}
+                          group
+                          onToggle={() => selectGroup(group.reviews)}
+                        />
                       </div>
                     </div>
                   )}
@@ -1447,6 +1365,88 @@ export function ReviewHome({
           )}
         </div>
       </div>
+      <div
+        hidden={inTrash}
+        {...stylex.props(
+          styles.controls,
+          styles.headerControls,
+          styles.corner,
+          inTrash && styles.hidden,
+        )}
+      >
+        <div ref={helpRef} {...stylex.props(styles.helpWrap)}>
+          <button
+            type="button"
+            aria-label="Help"
+            ref={helpTooltip}
+            aria-haspopup="menu"
+            aria-expanded={helpOpen}
+            {...stylex.props(
+              styles.iconButton,
+              styles.headerIconButton,
+              helpOpen && styles.headerIconOpen,
+            )}
+            onClick={() => setHelpOpen(!helpOpen)}
+          >
+            <HomeIcon kind="help" />
+          </button>
+          {helpOpen && (
+            <MenuSurface
+              role="menu"
+              tabIndex={-1}
+              aria-label="Help"
+              xstyle={[styles.menu, styles.cornerMenu]}
+              onClose={() => {
+                setHelpOpen(false);
+                helpRef.current?.querySelector("button")?.focus();
+              }}
+            >
+              <button
+                role="menuitem"
+                {...stylex.props(menuSurfaceStyles.item)}
+                disabled={!onOpenTutorial}
+                onClick={() => {
+                  setHelpOpen(false);
+                  onOpenTutorial?.();
+                }}
+              >
+                Need a refresher? Take the tour
+              </button>
+              <hr {...stylex.props(styles.divider)} />
+              <a
+                role="menuitem"
+                {...stylex.props(menuSurfaceStyles.item)}
+                href={REVIEW_DISCORD_URL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Ask on Discord ↗
+              </a>
+              <button
+                role="menuitem"
+                {...stylex.props(menuSurfaceStyles.item, styles.copyEmail)}
+                onClick={async () => {
+                  const copied = await copyText("founders@dev.fast");
+                  setCopyNotice({ copied });
+                }}
+              >
+                Need help? Send us an email
+                <CopyIcon />
+              </button>
+            </MenuSurface>
+          )}
+        </div>
+        <button
+          type="button"
+          aria-label="Settings"
+          ref={settingsTooltip}
+          disabled={!onOpenSettings}
+          {...stylex.props(styles.iconButton, styles.headerIconButton)}
+          onClick={onOpenSettings}
+        >
+          <HomeIcon kind="settings" />
+        </button>
+      </div>
       {toast && (
         <div
           role="status"
@@ -1568,14 +1568,6 @@ export function ReviewHome({
           <span {...stylex.props(styles.barCount)}>
             {selectedReviews.length} selected
           </span>
-          <button
-            disabled={busy}
-            {...stylex.props(styles.barButton)}
-            onClick={() => setSelected(new Set(visible.map((r) => r.reviewId)))}
-          >
-            Select all {visible.length}{" "}
-            <Shortcut xstyle={styles.barShortcut}>⌘A</Shortcut>
-          </button>
           {inTrash && (
             <button
               disabled={busy || !onRestore}
@@ -1841,24 +1833,32 @@ function Chip({
 
 function SelectionCheckbox({
   label,
+  title = "Select  x",
   checked,
   hidden,
+  group,
   onToggle,
 }: {
   label: string;
-  checked: boolean;
+  title?: string;
+  checked: boolean | "mixed";
   hidden: boolean;
+  group?: boolean;
   onToggle(range: boolean): void;
 }) {
   return (
     <span
-      {...stylex.props(styles.checkboxSlot, hidden && styles.hiddenCheck)}
-      title="Select  x"
+      {...stylex.props(
+        styles.checkboxSlot,
+        hidden && (group ? styles.hiddenGroupCheck : styles.hiddenCheck),
+      )}
+      title={title}
     >
       <input
         type="checkbox"
         aria-label={label}
-        checked={checked}
+        aria-checked={checked}
+        checked={checked === true}
         {...stylex.props(styles.checkbox)}
         onChange={() => {}}
         onClick={(event) => {
@@ -1872,7 +1872,9 @@ function SelectionCheckbox({
       >
         {checked && (
           <svg viewBox="0 0 10 10" {...stylex.props(styles.checkGlyph)}>
-            <path d="M2 5.2 4.2 7.4 8 3.2" />
+            <path
+              d={checked === "mixed" ? "M2 5 H8" : "M2 5.2 4.2 7.4 8 3.2"}
+            />
           </svg>
         )}
       </span>
@@ -1967,6 +1969,7 @@ function HomeIcon({
     | "settings"
     | "search"
     | "filter"
+    | "clearFilters"
     | "branch"
     | "folder"
     | "board"
@@ -1985,7 +1988,8 @@ function HomeIcon({
         (kind === "board" ||
           kind === "code" ||
           kind === "pr" ||
-          kind === "filter") &&
+          kind === "filter" ||
+          kind === "clearFilters") &&
           styles.rowIcon,
         size === "small" && styles.smallIcon,
         size === "caret" && styles.caretIcon,
@@ -2025,6 +2029,8 @@ function HomeIcon({
         </>
       ) : kind === "filter" ? (
         <path d="M2 4h12M4 8h8M6 12h4" />
+      ) : kind === "clearFilters" ? (
+        <path d="M2 4h12M4 8h3.5M6 12h1.5M10 8.5l4 4m0-4-4 4" />
       ) : kind === "folder" ? (
         <path d="M2 4.5v7.5h12V6H8l-1.5-1.5z" />
       ) : kind === "branch" ? (

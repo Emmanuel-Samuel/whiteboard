@@ -295,11 +295,9 @@ describe("Home interactions", () => {
     ]);
     expect(searchField()).toBeNull();
     await openFilters();
-    await click("Search…");
+    await optionSearch("fold");
+    await key("Enter", {}, document.activeElement!);
     expect(container.querySelector("[data-home-picker]")).toBeNull();
-    expect(document.activeElement).toBe(searchField());
-    await search("fold");
-    await act(async () => searchField().blur());
     expect(searchField()).toBeNull();
     expect(button("fold")).toBeTruthy();
     await openFilters();
@@ -323,12 +321,8 @@ describe("Home interactions", () => {
     await key("f", { metaKey: true });
     await key("Backspace", {}, searchField());
     expect(searchField()).toBeNull();
-    await click("Clear all");
-    expect(
-      [...container.querySelectorAll("button")].some(
-        (el) => el.textContent === "Clear all",
-      ),
-    ).toBe(false);
+    await click("Clear filters");
+    expect(container.querySelector('[aria-label="Clear filters"]')).toBeNull();
   });
 
   async function optionSearch(text: string, label = "Filter options") {
@@ -459,10 +453,16 @@ describe("Home interactions", () => {
     expect(titles()).toHaveLength(2);
   });
   it("keeps the caret in the menu under the pointer when hover opens or switches submenus", async () => {
-    await render([
-      summary("One", { repositoryName: "alpha" }),
-      summary("Two", { repositoryName: "beta" }),
-    ]);
+    await render(
+      ["alpha", "beta"].flatMap((repositoryName) =>
+        ["main", "feature"].map((tree) =>
+          summary(`${repositoryName} ${tree}`, {
+            repositoryName,
+            repositoryPath: `/${repositoryName}/${tree}`,
+          }),
+        ),
+      ),
+    );
     await openFilters();
 
     const mainInput = container.querySelector<HTMLInputElement>(
@@ -560,7 +560,7 @@ describe("Home interactions", () => {
     expect(container.textContent).toContain("3 selected");
     await select("Two");
     expect(container.textContent).toContain("2 of 3 selected");
-    await click("Select all 1");
+    await select("Older than 7 days");
     expect(container.textContent).toContain("All 1 selected");
     expect(container.textContent).toContain("3 selected");
     await openFilters();
@@ -675,7 +675,7 @@ describe("Home interactions", () => {
     await render([summary("One"), summary("Two")]);
     await select("One");
     expect(container.textContent).toContain("1 of 2 selected");
-    await click("Select all");
+    await select("Unread");
     expect(container.textContent).toContain("All 2 selected");
     await act(async () =>
       container
@@ -685,7 +685,7 @@ describe("Home interactions", () => {
         .click(),
     );
     expect(titles()).toEqual([]);
-    await click("Deselect");
+    await select("Unread");
     expect(
       container.querySelector('[aria-label="Selected whiteboards"]'),
     ).toBeNull();
