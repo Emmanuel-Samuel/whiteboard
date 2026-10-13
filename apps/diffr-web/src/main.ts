@@ -428,9 +428,9 @@ function renderLanding(): void {
   const repo = element("a", undefined, "diffr");
   repo.href = "https://github.com/devdotfast/whiteboard";
   blurb.append(
-    "Structural diffs in your browser powered by ",
+    "Structural diffs powered by ",
     repo,
-    ". All diffs are computed in your browser with WASM. All secrets stay local.",
+    ", computed in your browser with WASM. Your GitHub token stays on this device and goes only to GitHub.",
   );
   const input = landing.appendChild(element("input"));
   input.placeholder = "github.com/owner/repo/pull/123";
