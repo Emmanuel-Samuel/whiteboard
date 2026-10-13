@@ -1067,10 +1067,23 @@ export class DiffView extends Disposable {
 
       // A band sits in each column, as the editor folded each side, and keeps them level.
       if (item.kind === "band") {
-        segment(
-          this.renderBand(item, starts[index]!, context),
-          this.renderBand(item, false, context),
-        );
+        const left = this.renderBand(item, starts[index]!, context);
+        const right = this.renderBand(item, false, context);
+
+        // A side with none of the band's lines is hatched, as a missing line is, at its height.
+        const absent =
+          item.change === "inserted"
+            ? left
+            : item.change === "removed"
+              ? right
+              : undefined;
+
+        if (absent) {
+          absent.classList.add("is-absent");
+          absent.tabIndex = -1;
+          absent.setAttribute("aria-hidden", "true");
+        }
+        segment(left, right);
 
         return;
       }

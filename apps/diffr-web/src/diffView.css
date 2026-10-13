@@ -643,6 +643,20 @@ a.dv-open.codicon {
   width: 100cqw;
 }
 
+.dv-band.is-absent {
+  pointer-events: none;
+  box-shadow: none;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 5px,
+    var(--vscode-diffEditor-diagonalFill, rgba(128, 128, 128, 0.18)) 5px 6px
+  );
+}
+
+.dv-band.is-absent > * {
+  visibility: hidden;
+}
+
 .dv-seg.is-grid > .dv-band {
   position: static;
   width: auto;
