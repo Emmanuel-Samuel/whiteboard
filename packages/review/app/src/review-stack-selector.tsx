@@ -26,7 +26,7 @@ type OpenEvent = Pick<
   "metaKey" | "ctrlKey" | "shiftKey" | "button"
 >;
 
-/** The pull request stack this review belongs to, shown in every view. */
+/** The stack this review belongs to, shown in every view. */
 export function ReviewStackSelector(): ReactElement | null {
   const session = useReviewSession();
   const displayedVersion = useContext(DisplayedReviewVersionContext);
@@ -37,16 +37,17 @@ export function ReviewStackSelector(): ReactElement | null {
 
   useDismissOnOutside(container, open, setOpen);
 
-  // The pull request stack is optional context; a failed read is not shown.
+  // The stack is optional context; a failed read is not shown.
   const layers =
     useQuery({
       queryKey: canvasQueryKeys.reviewStack(
         displayedVersion,
         review.pullRequestNumber ?? null,
         review.pullRequestUrl ?? null,
+        review.headBranch ?? null,
       ),
       queryFn: ({ signal }) => review.stack(signal),
-      enabled: Boolean(review.pullRequestNumber),
+      enabled: Boolean(review.pullRequestNumber || review.headBranch),
       staleTime: 0,
     }).data ?? [];
 
@@ -57,20 +58,28 @@ export function ReviewStackSelector(): ReactElement | null {
     layers.findIndex((layer) => layer.relation === "current"),
   );
 
-  const openLayer = (layer: ReviewStackLayer, event: OpenEvent) => {
-    if (!layer.reviewUuid) return;
+  const openLayer = async (layer: ReviewStackLayer, event: OpenEvent) => {
+    if (!openable(layer)) return;
     setOpen(false);
+
+    const active = !(
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.button === 1
+    );
+
+    const reviewUuid =
+      layer.reviewUuid ??
+      (await review.createBranchReview(
+        layer.branch,
+        layer.base!,
+        layer.subject ?? layer.branch,
+      ));
+
     void session.surface.post({
       name: "openReview",
-      args: {
-        reviewUuid: layer.reviewUuid,
-        active: !(
-          event.metaKey ||
-          event.ctrlKey ||
-          event.shiftKey ||
-          event.button === 1
-        ),
-      },
+      args: { reviewUuid, active },
     });
   };
 
@@ -80,12 +89,12 @@ export function ReviewStackSelector(): ReactElement | null {
         xstyle={styles.trigger}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Pull request stack, ${index + 1} of ${layers.length}`}
+        aria-label={`Stack, ${index + 1} of ${layers.length}`}
         onClick={() => setOpen(!open)}
       >
         <StackIcon xstyle={styles.triggerIcon} />
-        <span {...stylex.props(styles.triggerNumber)}>
-          PR #{layers[index]!.pullRequestNumber}
+        <span {...stylex.props(styles.triggerNumber, styles.ellipsis)}>
+          {label(layers[index]!)}
         </span>
         <span {...stylex.props(styles.triggerPosition)}>
           {index + 1}/{layers.length}
@@ -103,7 +112,7 @@ export function ReviewStackSelector(): ReactElement | null {
           ref={popoverRef}
           popover="manual"
           role="menu"
-          aria-label="Pull request stack"
+          aria-label="Stack"
           {...stylex.props(
             shellStyles.topbarPopover,
             surfaceStyles.popover,
@@ -115,9 +124,9 @@ export function ReviewStackSelector(): ReactElement | null {
           </div>
           {layers.map((layer) => (
             <LayerRow
-              key={layer.pullRequestNumber}
+              key={layer.branch}
               layer={layer}
-              onOpen={openLayer}
+              onOpen={(layer, event) => void openLayer(layer, event)}
             />
           ))}
         </div>
@@ -125,6 +134,13 @@ export function ReviewStackSelector(): ReactElement | null {
     </div>
   );
 }
+
+const label = (layer: ReviewStackLayer) =>
+  layer.pullRequestNumber ? `PR #${layer.pullRequestNumber}` : layer.branch;
+
+/** A pull request opens only its existing review; a local branch can get one. */
+const openable = (layer: ReviewStackLayer) =>
+  Boolean(layer.reviewUuid || layer.base);
 
 function LayerRow({
   layer,
@@ -134,7 +150,16 @@ function LayerRow({
   onOpen: (layer: ReviewStackLayer, event: OpenEvent) => void;
 }): ReactElement {
   const current = layer.relation === "current";
-  const disabled = !current && !layer.reviewUuid;
+  const disabled = !current && !openable(layer);
+  const empty = !current && !layer.reviewUuid;
+
+  const title = layer.pullRequestNumber
+    ? `PR #${layer.pullRequestNumber}${layer.reviewTitle ? ` · ${layer.reviewTitle}` : ""}`
+    : (layer.reviewTitle ?? layer.subject ?? layer.branch);
+
+  const detail = [title !== layer.branch && layer.branch, empty && "No session"]
+    .filter(Boolean)
+    .join(" · ");
 
   const content = (
     <>
@@ -147,19 +172,19 @@ function LayerRow({
             disabled && styles.faint,
           )}
         >
-          PR #{layer.pullRequestNumber}
-          {layer.reviewTitle ? ` · ${layer.reviewTitle}` : ""}
+          {title}
         </span>
-        <span
-          {...stylex.props(
-            styles.ellipsis,
-            styles.branch,
-            current && styles.branchCurrent,
-          )}
-        >
-          {layer.branch}
-          {disabled ? " · No session" : ""}
-        </span>
+        {detail && (
+          <span
+            {...stylex.props(
+              styles.ellipsis,
+              styles.branch,
+              current && styles.branchCurrent,
+            )}
+          >
+            {detail}
+          </span>
+        )}
       </span>
     </>
   );
@@ -181,7 +206,9 @@ function LayerRow({
       title={
         disabled
           ? "No generated session exists for this pull request"
-          : "Open session (Cmd/Ctrl-click to open in the background)"
+          : empty
+            ? "Create a session for this branch (Cmd/Ctrl-click to open in the background)"
+            : "Open session (Cmd/Ctrl-click to open in the background)"
       }
       onClick={(event) => onOpen(layer, event)}
       onAuxClick={(event) => {
@@ -206,6 +233,7 @@ const styles = stylex.create({
     color: tokens.inkMuted,
   },
   triggerNumber: {
+    maxWidth: "200px",
     fontWeight: fontWeight.semibold,
   },
   triggerPosition: {

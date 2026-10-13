@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
+import { defaultBranch, git } from "@dev.fast/local-vcs";
 import type {
   ReviewApiSummary,
   ReviewStackLayer,
@@ -22,14 +23,71 @@ const GitHubStacksSchema = z.array(
 
 export type RunGitHubApi = (host: string, endpoint: string) => Promise<string>;
 
+type Subject = Pick<ReviewApiSummary, "origin"> & { reviewId?: string };
+
+type Candidate = Pick<
+  ReviewApiSummary,
+  "reviewId" | "title" | "origin" | "pins" | "trashedAt" | "repositoryGroup"
+>;
+
+interface StackEntry {
+  branch: string;
+  pullRequestNumber: number | null;
+  pullRequestUrl: string | null;
+  base: string | null;
+  subject: string | null;
+  current: boolean;
+  reviews: readonly Candidate[];
+}
+
+/** The review's GitHub stack, else the chain of reviews through its base. */
 export async function resolveReviewStackLayers(
-  subject: Pick<ReviewApiSummary, "origin"> & { reviewId?: string },
-  reviews: readonly Pick<
-    ReviewApiSummary,
-    "reviewId" | "title" | "origin" | "pins" | "trashedAt"
-  >[],
-  runGitHubApi: RunGitHubApi = defaultRunGitHubApi,
+  subject: Subject,
+  reviews: readonly Candidate[],
+  options: { runGitHubApi?: RunGitHubApi; repositoryPath?: string } = {},
 ): Promise<ReviewStackLayer[]> {
+  let entries = await gitHubStack(
+    subject,
+    reviews,
+    options.runGitHubApi ?? defaultRunGitHubApi,
+  );
+
+  if (!entries.length && options.repositoryPath)
+    entries = await localStack(subject, reviews, options.repositoryPath);
+
+  const currentIndex = entries.findIndex((entry) => entry.current);
+
+  return entries.map((entry, index) => {
+    const review =
+      entry.reviews.find(
+        (candidate) => candidate.reviewId === subject.reviewId,
+      ) ??
+      entry.reviews.findLast((candidate) => !candidate.trashedAt) ??
+      entry.reviews.at(-1);
+
+    return {
+      branch: entry.branch,
+      pullRequestNumber: entry.pullRequestNumber,
+      pullRequestUrl: entry.pullRequestUrl,
+      base: entry.base,
+      subject: entry.subject,
+      reviewUuid: review?.reviewId ?? null,
+      reviewTitle: review?.title ?? null,
+      relation:
+        index < currentIndex
+          ? "earlier"
+          : index === currentIndex
+            ? "current"
+            : "later",
+    };
+  });
+}
+
+async function gitHubStack(
+  subject: Subject,
+  reviews: readonly Candidate[],
+  runGitHubApi: RunGitHubApi,
+): Promise<StackEntry[]> {
   const binding = subject.origin?.pullRequestUrl?.match(
     /^https:\/\/([a-z0-9.-]+)\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/pull\/([1-9]\d*)$/,
   );
@@ -59,43 +117,111 @@ export async function resolveReviewStackLayers(
     candidate.pull_requests.some((pr) => pr.number === pullRequestNumber),
   );
 
-  if (!stack) return [];
+  return (stack?.pull_requests ?? []).map((pr) => ({
+    branch: pr.head.ref,
+    pullRequestNumber: pr.number,
+    pullRequestUrl: `${repoKey}/pull/${pr.number}`,
+    base: null,
+    subject: null,
+    current: pr.number === pullRequestNumber,
+    reviews: reviews.filter(
+      (candidate) =>
+        (candidate.origin?.pullRequestUrl?.replace(/\/pull\/\d+.*$/, "") ??
+          candidate.pins?.repositoryId) === repoKey &&
+        candidate.origin?.pullRequestNumber === pr.number,
+    ),
+  }));
+}
 
-  const currentIndex = stack.pull_requests.findIndex(
-    (pr) => pr.number === pullRequestNumber,
+/** The chain of reviews through this one, linked by the base each names. */
+async function localStack(
+  subject: Subject,
+  reviews: readonly Candidate[],
+  repositoryPath: string,
+): Promise<StackEntry[]> {
+  const group = reviews.find((review) => review.reviewId === subject.reviewId)
+    ?.repositoryGroup?.key;
+
+  const current = subject.origin?.branch;
+
+  if (!group || !current) return [];
+
+  const main = subject.origin?.baseBranch
+    ? await defaultBranch(repositoryPath).catch(() => null)
+    : null;
+
+  const name = (ref: string) => ref.replace(/^origin\//, "");
+
+  const inGroup = reviews.filter(
+    (review) => review.repositoryGroup?.key === group,
   );
 
-  return stack.pull_requests.map((pr, index) => {
-    const matches = reviews.filter((candidate) => {
-      const repository =
-        candidate.origin?.pullRequestUrl?.replace(/\/pull\/\d+.*$/, "") ??
-        candidate.pins?.repositoryId;
+  const latest = (field: "branch" | "baseBranch", branch: string) => {
+    const matches = inGroup.filter(
+      (review) => review.origin?.[field] === branch,
+    );
 
-      return (
-        repository === repoKey &&
-        candidate.origin?.pullRequestNumber === pr.number
-      );
-    });
+    return matches.findLast((review) => !review.trashedAt) ?? matches.at(-1);
+  };
 
-    const review =
-      matches.find((candidate) => candidate.reviewId === subject.reviewId) ??
-      matches.findLast((candidate) => !candidate.trashedAt) ??
-      matches.at(-1);
+  const branches = [current];
 
-    return {
-      branch: pr.head.ref,
-      pullRequestNumber: pr.number,
-      pullRequestUrl: `${repoKey}/pull/${pr.number}`,
-      reviewUuid: review?.reviewId ?? null,
-      reviewTitle: review?.title ?? null,
-      relation:
-        index < currentIndex
-          ? "earlier"
-          : index === currentIndex
-            ? "current"
-            : "later",
-    };
+  for (
+    let base = subject.origin?.baseBranch;
+    base && name(base) !== (main && name(main.ref)) && !branches.includes(base);
+    base = latest("branch", base)?.origin?.baseBranch
+  )
+    branches.unshift(base);
+
+  for (
+    let child = latest("baseBranch", current)?.origin?.branch;
+    child && !branches.includes(child);
+    child = latest("baseBranch", child)?.origin?.branch
+  )
+    branches.push(child);
+
+  const bottom = branches[0]!;
+
+  // A base nobody reviewed gets a row; a new review of it starts at its fork.
+  const start =
+    latest("branch", bottom) || !main
+      ? null
+      : await forkPoint(repositoryPath, main.commit, bottom);
+
+  if (!latest("branch", bottom) && !start) branches.shift();
+
+  if (branches.length < 2) return [];
+
+  return branches.map((branch) => ({
+    branch,
+    pullRequestNumber: null,
+    pullRequestUrl: null,
+    base: (branch === bottom && start?.base) || null,
+    subject: (branch === bottom && start?.subject) || null,
+    current: branch === current,
+    reviews: inGroup.filter((review) => review.origin?.branch === branch),
+  }));
+}
+
+/** Where a local branch left `main`, and its oldest commit's subject. */
+async function forkPoint(repositoryPath: string, main: string, branch: string) {
+  const ref = `refs/heads/${branch}`;
+
+  const fork = await git(repositoryPath, ["merge-base", main, ref], {
+    allowFailure: true,
   });
+
+  if (!fork.ok) return null;
+
+  const base = fork.stdout.trim();
+
+  const log = await git(
+    repositoryPath,
+    ["log", "--reverse", "--format=%s", `${base}..${ref}`],
+    { allowFailure: true },
+  );
+
+  return { base, subject: log.stdout.split("\n")[0] || null };
 }
 
 async function defaultRunGitHubApi(

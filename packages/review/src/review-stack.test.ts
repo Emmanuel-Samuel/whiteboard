@@ -1,5 +1,13 @@
-import type { ReviewApiSummary } from "@dev.fast/review-protocol";
-import { describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import type {
+  ReviewApiSummary,
+  ReviewStackLayer,
+} from "@dev.fast/review-protocol";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type RunGitHubApi, resolveReviewStackLayers } from "./review-stack";
 
@@ -54,13 +62,15 @@ describe("resolveReviewStackLayers", () => {
           origin: { pullRequestUrl: "https://github.com/o/r/pull/20" },
         },
         [reviewA, reviewB],
-        run,
+        { runGitHubApi: run },
       ),
     ).resolves.toEqual([
       {
         branch: "a",
         pullRequestNumber: 10,
         pullRequestUrl: "https://github.com/o/r/pull/10",
+        base: null,
+        subject: null,
         reviewUuid: reviewA.reviewId,
         reviewTitle: "Review A",
         relation: "earlier",
@@ -69,6 +79,8 @@ describe("resolveReviewStackLayers", () => {
         branch: "b",
         pullRequestNumber: 20,
         pullRequestUrl: "https://github.com/o/r/pull/20",
+        base: null,
+        subject: null,
         reviewUuid: reviewB.reviewId,
         reviewTitle: "Review B",
         relation: "current",
@@ -77,6 +89,8 @@ describe("resolveReviewStackLayers", () => {
         branch: "c",
         pullRequestNumber: 30,
         pullRequestUrl: "https://github.com/o/r/pull/30",
+        base: null,
+        subject: null,
         reviewUuid: null,
         reviewTitle: null,
         relation: "later",
@@ -85,6 +99,8 @@ describe("resolveReviewStackLayers", () => {
         branch: "d",
         pullRequestNumber: 40,
         pullRequestUrl: "https://github.com/o/r/pull/40",
+        base: null,
+        subject: null,
         reviewUuid: null,
         reviewTitle: null,
         relation: "later",
@@ -102,12 +118,14 @@ describe("resolveReviewStackLayers", () => {
     };
 
     await expect(
-      resolveReviewStackLayers(subject, [], async () => {
-        throw new Error("GitHub is unavailable");
+      resolveReviewStackLayers(subject, [], {
+        runGitHubApi: async () => {
+          throw new Error("GitHub is unavailable");
+        },
       }),
     ).resolves.toEqual([]);
     await expect(
-      resolveReviewStackLayers(subject, [], async () => "{}"),
+      resolveReviewStackLayers(subject, [], { runGitHubApi: async () => "{}" }),
     ).resolves.toEqual([]);
   });
   it("does not invoke GitHub for a review without a canonical PR binding", async () => {
@@ -118,7 +136,9 @@ describe("resolveReviewStackLayers", () => {
       "https://github.com/o/r/issues/20",
     ]) {
       expect(
-        await resolveReviewStackLayers({ origin: { pullRequestUrl } }, [], run),
+        await resolveReviewStackLayers({ origin: { pullRequestUrl } }, [], {
+          runGitHubApi: run,
+        }),
       ).toEqual([]);
     }
 
@@ -131,14 +151,17 @@ describe("resolveReviewStackLayers", () => {
     };
 
     expect(
-      await resolveReviewStackLayers(subject, [], async () => "[]"),
+      await resolveReviewStackLayers(subject, [], {
+        runGitHubApi: async () => "[]",
+      }),
     ).toEqual([]);
     expect(
-      await resolveReviewStackLayers(subject, [], async () =>
-        JSON.stringify([
-          { pull_requests: [{ number: 10, head: { ref: "unrelated" } }] },
-        ]),
-      ),
+      await resolveReviewStackLayers(subject, [], {
+        runGitHubApi: async () =>
+          JSON.stringify([
+            { pull_requests: [{ number: 10, head: { ref: "unrelated" } }] },
+          ]),
+      }),
     ).toEqual([]);
   });
 
@@ -153,10 +176,12 @@ describe("resolveReviewStackLayers", () => {
           pullRequestNumber: 20,
         }),
       ],
-      async () =>
-        JSON.stringify([
-          { pull_requests: [{ number: 20, head: { ref: "feature" } }] },
-        ]),
+      {
+        runGitHubApi: async () =>
+          JSON.stringify([
+            { pull_requests: [{ number: 20, head: { ref: "feature" } }] },
+          ]),
+      },
     );
 
     expect(result).toEqual([
@@ -164,6 +189,8 @@ describe("resolveReviewStackLayers", () => {
         branch: "feature",
         pullRequestNumber: 20,
         pullRequestUrl: "https://github.com/o/r/pull/20",
+        base: null,
+        subject: null,
         reviewUuid: null,
         reviewTitle: null,
         relation: "current",
@@ -194,16 +221,18 @@ describe("resolveReviewStackLayers", () => {
         review("newer-20", 20),
         review("only-dismissed-30", 30, "2026-10-06T00:00:00.000Z"),
       ],
-      async () =>
-        JSON.stringify([
-          {
-            pull_requests: [
-              { number: 10, head: { ref: "a" } },
-              { number: 20, head: { ref: "b" } },
-              { number: 30, head: { ref: "c" } },
-            ],
-          },
-        ]),
+      {
+        runGitHubApi: async () =>
+          JSON.stringify([
+            {
+              pull_requests: [
+                { number: 10, head: { ref: "a" } },
+                { number: 20, head: { ref: "b" } },
+                { number: 30, head: { ref: "c" } },
+              ],
+            },
+          ]),
+      },
     );
 
     expect(layers.map((layer) => layer.reviewUuid)).toEqual([
@@ -235,7 +264,7 @@ describe("resolveReviewStackLayers", () => {
           pullRequestNumber: 10,
         }),
       ],
-      run,
+      { runGitHubApi: run },
     );
 
     expect(run).toHaveBeenCalledWith(
@@ -247,6 +276,109 @@ describe("resolveReviewStackLayers", () => {
     ).toEqual([
       ["https://ghe.example.com/o/r/pull/10", null],
       ["https://ghe.example.com/o/r/pull/20", null],
+    ]);
+  });
+});
+
+describe("local stacks", () => {
+  const roots: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(
+      roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+    );
+  });
+
+  // main ← a ← b ← c.
+  const repository = async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "review-stack-"));
+    roots.push(root);
+
+    const git = (...args: string[]) =>
+      execFileSync("git", args, { cwd: root, stdio: "ignore" });
+
+    git("init", "-b", "main");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    git("commit", "--allow-empty", "-m", "base");
+
+    for (const [branch, from] of [
+      ["a", "main"],
+      ["b", "a"],
+      ["c", "b"],
+    ]) {
+      git("switch", "-c", branch!, from!);
+      git("commit", "--allow-empty", "-m", `Start ${branch}`);
+      git("commit", "--allow-empty", "-m", `Finish ${branch}`);
+    }
+
+    return root;
+  };
+
+  const review = (
+    reviewId: string,
+    branch: string,
+    baseBranch: string,
+    trashedAt: string | null = null,
+  ) => ({
+    reviewId,
+    title: `Review ${branch}`,
+    origin: { branch, baseBranch },
+    trashedAt,
+    repositoryGroup: { key: "repo", label: "repo" },
+  });
+
+  const rows = (layers: ReviewStackLayer[]) =>
+    layers.map((layer) => [
+      layer.branch,
+      layer.relation,
+      layer.reviewUuid,
+      layer.base,
+      layer.subject,
+    ]);
+
+  it("chains reviews through the bases they name, following the newest above", async () => {
+    const root = await repository();
+    const b = review("b", "b", "a");
+
+    const layers = await resolveReviewStackLayers(
+      b,
+      [
+        review("a", "a", "main"),
+        b,
+        review("c-old", "c", "b"),
+        review("c", "c", "b"),
+        review("c-trashed", "c", "b", "2026-10-13T00:00:00.000Z"),
+        {
+          ...review("other", "d", "b"),
+          repositoryGroup: { key: "other", label: "other" },
+        },
+      ],
+      { repositoryPath: root },
+    );
+
+    expect(rows(layers)).toEqual([
+      ["a", "earlier", "a", null, null],
+      ["b", "current", "b", null, null],
+      ["c", "later", "c", null, null],
+    ]);
+  });
+
+  it("offers an unreviewed base branch from its fork point", async () => {
+    const root = await repository();
+
+    const main = execFileSync("git", ["rev-parse", "main"], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim();
+
+    const b = review("b", "b", "a");
+
+    expect(
+      rows(await resolveReviewStackLayers(b, [b], { repositoryPath: root })),
+    ).toEqual([
+      ["a", "earlier", null, main, "Start a"],
+      ["b", "current", "b", null, null],
     ]);
   });
 });
