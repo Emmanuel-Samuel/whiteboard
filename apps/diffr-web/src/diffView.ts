@@ -89,6 +89,8 @@ interface RowContext {
   readonly viewedHeads: Record<"lhs" | "rhs", Set<number>>;
   /** Each side's scopes, by header line, that draw an indent guide down their body. */
   readonly guides: Record<"lhs" | "rhs", Guide[]>;
+  /** Folds whose header line has a chevron, so their band needs none of its own. */
+  readonly headed: Set<number>;
 }
 
 /** A scope's indent guide: the rows after `line` and before `end`, at its header's indentation. */
@@ -766,6 +768,7 @@ export class DiffView extends Disposable {
       path,
       ...this.viewedLines(path, diff, file),
       guides: { lhs: [], rhs: [] },
+      headed: new Set(),
     };
 
     for (const side of ["lhs", "rhs"] as const) {
@@ -792,6 +795,11 @@ export class DiffView extends Disposable {
     if (this.split) {
       const items = splitItems(diff, collapsed);
       let inChange = false;
+
+      for (const item of items)
+        if (item.kind === "pair")
+          for (const cell of [item.left, item.right])
+            if (cell?.fold) context.headed.add(cell.fold.foldStateId);
 
       const starts = items.map((item) => {
         if (item.kind === "band") {
@@ -824,6 +832,10 @@ export class DiffView extends Disposable {
     } else {
       const items = unifiedItems(diff, collapsed);
 
+      for (const item of items)
+        if (item.kind === "line" && item.fold)
+          context.headed.add(item.fold.foldStateId);
+
       const starts = items.map((item, index) => {
         const previous = items[index - 1];
 
@@ -844,7 +856,7 @@ export class DiffView extends Disposable {
           slice.forEach((item, index) =>
             into.append(
               item.kind === "band"
-                ? this.renderBand(item, sliceStarts[index]!)
+                ? this.renderBand(item, sliceStarts[index]!, context)
                 : this.renderLine(item, context, sliceStarts[index]!),
             ),
           ),
@@ -1047,14 +1059,18 @@ export class DiffView extends Disposable {
     };
 
     items.forEach((item, index) => {
+      segment ??= open();
+
+      // A band sits in each column, as the editor folded each side, and keeps them level.
       if (item.kind === "band") {
-        segment = undefined;
-        into.append(this.renderBand(item, starts[index]!));
+        segment(
+          this.renderBand(item, starts[index]!, context),
+          this.renderBand(item, false, context),
+        );
 
         return;
       }
 
-      segment ??= open();
       segment(
         cell(item.left, "lhs", starts[index]!),
         cell(item.right, "rhs", false),
@@ -1184,7 +1200,11 @@ export class DiffView extends Disposable {
     return row;
   }
 
-  private renderBand(band: UnifiedBand, startsChange: boolean): HTMLElement {
+  private renderBand(
+    band: UnifiedBand,
+    startsChange: boolean,
+    context: RowContext,
+  ): HTMLElement {
     const node = element("div", `dv-band kind-${band.change}`);
 
     if (startsChange) node.classList.add("is-change-start");
@@ -1198,7 +1218,10 @@ export class DiffView extends Disposable {
       `Expand ${band.hidden} hidden line${band.hidden === 1 ? "" : "s"}${summary ? ", summarized" : `: ${band.title}`}`,
     );
     const title = node.appendChild(element("span", "dv-band-title"));
-    title.append(element("span", "dv-band-chevron"));
+
+    // A scope's header chevron already opens it; one control per fold.
+    if (!context.headed.has(band.foldStateId))
+      title.append(element("span", "dv-band-chevron"));
 
     if (summary) title.append(element("span", "dv-band-caption", "Pseudocode"));
     title.append(element("span", "dv-band-label", band.title));

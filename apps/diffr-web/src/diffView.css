@@ -634,6 +634,21 @@ a.dv-open.codicon {
   vertical-align: top;
 }
 
+/* A band spans its own column and stays in view as the column scrolls sideways. */
+.dv-pane {
+  container-type: inline-size;
+}
+
+.dv-pane-rows > .dv-band {
+  width: 100cqw;
+}
+
+.dv-seg.is-grid > .dv-band {
+  position: static;
+  width: auto;
+  min-width: 0;
+}
+
 .dv-seg.is-grid > .dv-row {
   min-width: 0;
   white-space: pre-wrap;
