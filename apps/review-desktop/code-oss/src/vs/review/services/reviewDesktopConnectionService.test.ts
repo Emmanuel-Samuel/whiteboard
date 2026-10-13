@@ -144,3 +144,17 @@ test("tutorial deletion suppresses auto-prepare across restarts until explicit o
 	assert.match(requests[2] ?? "", /POST .*\/tutorial\/prepare$/);
 	restoredService.dispose();
 });
+
+test("reads the remote hosts' states from the Desktop server", async (t) => {
+	const service = serviceWith();
+	t.after(() => service.dispose());
+	const requests: string[] = [];
+	const answer = [{ alias: "devbox", serverId: "s1", state: "online" }, { alias: "box2", state: "not-installed", detail: "Install it.", installCommand: "npm install -g @dev.fast/whiteboard@0.1.6" }];
+	mockFetch(t, async (input, init) => {
+		requests.push(`${String(input)} ${new Headers(init?.headers).get("x-review-token")}`);
+		return Response.json(answer);
+	});
+
+	assert.deepEqual(await service.readRemoteHosts(), answer);
+	assert.deepEqual(requests, ["http://127.0.0.1:5000/remote-hosts token"]);
+});

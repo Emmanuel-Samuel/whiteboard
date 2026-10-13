@@ -16,6 +16,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { ConnectCard, LegacySkillsRow } from "./connect-card";
 import { DiffrConfigSection } from "./diffr-config-section";
 import { homeStyles } from "./home-styles";
+import { RemoteHostsSection } from "./remote-hosts-section";
 import { settingsStyles as styles } from "./settings-styles";
 import { withClass } from "./stylex-props";
 import { TraceCaptureSection } from "./trace-capture-section";
@@ -336,6 +337,10 @@ export function SettingsPage({
               <Button onClick={settings.importVsCodeSettings}>Import…</Button>
             </Row>
           </Section>
+
+          {settings.remoteHosts.enabled ? (
+            <RemoteHostsSection hosts={settings.remoteHosts} />
+          ) : null}
 
           <Section label="Experimental Features">
             <Row

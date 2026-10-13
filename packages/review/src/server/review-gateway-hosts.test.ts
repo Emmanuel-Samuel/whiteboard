@@ -65,7 +65,7 @@ it("never contacts a host that arrives with a problem", async () => {
   expect(fake.requests).toEqual([]);
 });
 
-it("refuses a host on another version, naming both versions", async () => {
+it("refuses a host on another version, naming both versions, with the install command beside the detail", async () => {
   const remote = await startRemote(path.join(root, "a"));
   const gateway = hosts("0.0.0-other");
 
@@ -78,7 +78,38 @@ it("refuses a host on another version, naming both versions", async () => {
   expect(state?.detail).toContain("0.0.0-other");
   expect(state?.detail).toContain("Install Whiteboard 0.0.0-other on devbox.");
   expect(state?.detail).not.toContain("npm install");
+  expect(state?.installCommand).toBe(
+    "npm install -g @dev.fast/whiteboard@0.0.0-other",
+  );
   expect(gateway.online()).toEqual([]);
+});
+
+it("names this machine's install command for a host without Whiteboard", () => {
+  const gateway = hosts("0.1.6");
+
+  gateway.set([
+    {
+      alias: "devbox",
+      problem: {
+        state: "not-installed",
+        detail: "Whiteboard is not installed on devbox.",
+      },
+    },
+    {
+      alias: "other",
+      problem: { state: "auth-failed", detail: "Permission denied." },
+    },
+  ]);
+
+  expect(gateway.states()).toEqual([
+    {
+      alias: "devbox",
+      state: "not-installed",
+      detail: "Whiteboard is not installed on devbox.",
+      installCommand: "npm install -g @dev.fast/whiteboard@0.1.6",
+    },
+    { alias: "other", state: "auth-failed", detail: "Permission denied." },
+  ]);
 });
 
 it("refuses a host whose version could not be read", async () => {
@@ -241,4 +272,116 @@ it("does not send a request with a body again when a new connection closed", asy
 
   await expect(host.post()).rejects.toMatchObject({ code: "UND_ERR_SOCKET" });
   expect(host.requests()).toBe(1);
+});
+
+it("a restarted server is offline until Desktop attaches again, then online with the new token", async () => {
+  const stateDir = path.join(root, "a");
+  const a = await startRemote(stateDir);
+  const port = Number(new URL(a.endpoint.url).port);
+  const restarted: string[] = [];
+
+  const gateway = createGatewayHosts({
+    version,
+    restarted: (alias) => restarted.push(alias),
+  });
+
+  closes.push(() => gateway.close());
+
+  gateway.set([{ alias: "wb-a", endpoint: a.endpoint }]);
+  const { serverId } = await a.health();
+  await expect.poll(() => gateway.states()[0]?.state).toBe("online");
+
+  await a.stop();
+  const b = await startRemote(stateDir, port);
+  gateway.failed(gateway.serving(serverId)!, "test");
+
+  await expect.poll(() => restarted).toEqual(["wb-a"]);
+  expect(gateway.states()[0]?.state).toBe("offline");
+
+  gateway.set([{ alias: "wb-a", endpoint: b.endpoint }]);
+  await expect.poll(() => gateway.states()[0]?.state).toBe("online");
+  expect(restarted).toHaveLength(1);
+  expect(gateway.serving(serverId)?.alias).toBe("wb-a");
+}, 20_000);
+
+it("a server that stops answering /health once its id is known is attached again once, even if a request then gets a 401", async () => {
+  let down = false;
+  const held = Promise.withResolvers<void>();
+
+  const fake = await startFake({
+    version,
+    handle: (request, response) => {
+      if (request.url === "/health") {
+        if (down) response.destroy();
+
+        return down;
+      }
+
+      void held.promise.then(() => {
+        response.statusCode = 401;
+        response.end();
+      });
+
+      return true;
+    },
+  });
+
+  const restarted: string[] = [];
+
+  const gateway = createGatewayHosts({
+    version,
+    restarted: (alias) => restarted.push(alias),
+  });
+
+  closes.push(() => gateway.close());
+  gateway.set([{ alias: "devbox", endpoint: fake.endpoint }]);
+  await expect.poll(() => gateway.states()[0]?.state).toBe("online");
+  const [remote] = gateway.online();
+  const request = send(remote!, { method: "GET", path: "/reviews-api" });
+
+  down = true;
+  gateway.failed(remote!, "test");
+  await expect.poll(() => restarted).toEqual(["devbox"]);
+  held.resolve();
+  await (await request).body.dump();
+
+  expect(gateway.states()[0]?.state).toBe("offline");
+  expect(restarted).toEqual(["devbox"]);
+});
+
+it("a 401 on a forwarded request marks the host restarted and asks Desktop to attach again once", async () => {
+  const fake = await startFake({
+    version,
+    handle: (request, response) => {
+      if (request.url === "/health") return false;
+      response.statusCode = 401;
+      response.end();
+
+      return true;
+    },
+  });
+
+  const restarted: string[] = [];
+
+  const gateway = createGatewayHosts({
+    version,
+    restarted: (alias) => restarted.push(alias),
+  });
+
+  closes.push(() => gateway.close());
+  gateway.set([{ alias: "devbox", endpoint: fake.endpoint }]);
+  await expect.poll(() => gateway.states()[0]?.state).toBe("online");
+  const [remote] = gateway.online();
+
+  for (const response of await Promise.all([
+    send(remote!, { method: "GET", path: "/reviews-api" }),
+    send(remote!, { method: "GET", path: "/reviews-api" }),
+  ]))
+    await response.body.dump();
+
+  expect(gateway.states()[0]).toMatchObject({
+    state: "offline",
+    detail: "devbox restarted; attaching again.",
+  });
+  expect(restarted).toEqual(["devbox"]);
 });

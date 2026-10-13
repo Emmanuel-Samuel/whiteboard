@@ -16,12 +16,16 @@ import {
 
 const HEALTH_TIMEOUT_MS = 3_000;
 
-const HEARTBEAT_MS = 30_000;
+const HEARTBEAT_MS = 10_000;
+
+const INSTALLS = new Set<ReviewGatewayHostState["state"]>([
+  "incompatible",
+  "not-installed",
+]);
 
 const healthSchema = z.object({
   ok: z.literal(true),
   serverId: z.string().optional(),
-  instanceId: z.string(),
   version: z.string(),
 });
 
@@ -30,11 +34,13 @@ export interface GatewayRemote {
   readonly endpoint?: { url: string; token: string };
   readonly dispatcher?: Agent;
   readonly serverId?: string;
+  readonly unauthorized?: () => void;
 }
 
 interface Host extends GatewayRemote {
   endpoint?: { url: string; token: string };
   dispatcher?: Agent;
+  unauthorized?: () => void;
   problem?: ReviewGatewayHost["problem"];
   serverId?: string;
   status: ReviewGatewayHostState["state"];
@@ -49,6 +55,7 @@ export function createGatewayHosts(input: {
   log?(message: string): void;
   machine?(serverId: string, alias: string): void;
   changed?(): void;
+  restarted?(alias: string): void;
   heartbeatMs?: number;
 }) {
   const log = input.log ?? (() => {});
@@ -90,6 +97,9 @@ export function createGatewayHosts(input: {
       ...known,
       state: host.status,
       ...(host.detail !== undefined && { detail: host.detail }),
+      ...(INSTALLS.has(host.status) && {
+        installCommand: `npm install -g @dev.fast/whiteboard@${input.version}`,
+      }),
     };
   }
 
@@ -115,6 +125,21 @@ export function createGatewayHosts(input: {
     input.changed?.();
   }
 
+  function restartedHost(
+    host: Host,
+    detail = `${host.alias} restarted; attaching again.`,
+  ) {
+    if (closed || !host.endpoint) return;
+    host.endpoint = undefined;
+    clearTimeout(host.retry);
+    host.checking?.abort();
+    host.checking = undefined;
+    host.status = "offline";
+    host.detail = detail;
+    report();
+    input.restarted?.(host.alias);
+  }
+
   function dispose(host: Host) {
     clearTimeout(host.retry);
     host.checking?.abort();
@@ -137,7 +162,10 @@ export function createGatewayHosts(input: {
       host.detail = given.problem.detail;
     } else if (!given.endpoint)
       host.detail = `Waiting for a connection to ${given.alias}.`;
-    else host.dispatcher = new Agent();
+    else {
+      host.dispatcher = new Agent();
+      host.unauthorized = () => restartedHost(host);
+    }
 
     return host;
   }
@@ -185,13 +213,18 @@ export function createGatewayHosts(input: {
     if (host.checking !== abort) return;
     host.checking = undefined;
 
+    // /health leaves out serverId when it refuses the token, as after a restart.
+    if (health && health.serverId === undefined) return restartedHost(host);
+
+    if (!health && host.serverId !== undefined)
+      return restartedHost(
+        host,
+        `${host.alias} is offline: ${reason}; attaching again.`,
+      );
+
     if (!health) {
       host.status = "offline";
       host.detail = `${host.alias} is offline: ${reason}.`;
-      retryLater(host);
-    } else if (health.serverId === undefined) {
-      host.status = "offline";
-      host.detail = `${host.alias} is offline: it did not accept the token.`;
       retryLater(host);
     } else {
       host.serverId = health.serverId;

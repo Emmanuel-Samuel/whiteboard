@@ -26,6 +26,7 @@ parseReviewDesktopVerbFrame,
 parseReviewTutorialOpenResponse,
 type ReviewCliInstallApplyResponse,
 type ReviewCliInstallStatus,
+type ReviewGatewayHostState,
 type ReviewTutorialOpenResponse,
 type ReviewVerbResponse
 } from "../common/reviewProtocol.js";
@@ -67,6 +68,9 @@ export interface IReviewDesktopConnectionService {
 	/** The agents answering in Ask in any review, which quitting would stop. */
 	workingAskAgents(): Promise<string[]>;
 	setScratchpadEnabled(enabled: boolean): Promise<boolean>;
+	readRemoteHosts(): Promise<ReviewGatewayHostState[]>;
+	listSshAliases(): Promise<string[]>;
+	retryRemoteHost(alias: string): Promise<void>;
 	getTutorialStatus(): Promise<{ version: 1; reviewUuid: string | null }>;
 	prepareTutorial(): Promise<void>;
 	openTutorial(): Promise<ReviewTutorialOpenResponse>;
@@ -218,6 +222,25 @@ export class ReviewDesktopConnectionService extends Disposable implements IRevie
 		});
 		await this.requireOk(response, "scratchpad preference");
 		return parseScratchpadPreference(await response.json());
+	}
+
+	async readRemoteHosts(): Promise<ReviewGatewayHostState[]> {
+		await this.initialize();
+		const response = await fetch(`${this.serverUrl}/remote-hosts`, {
+			headers: this.authHeaders(),
+			signal: AbortSignal.timeout(30_000),
+		});
+		await this.requireOk(response, "remote hosts");
+		return (await response.json()) as ReviewGatewayHostState[];
+	}
+
+	async listSshAliases(): Promise<string[]> {
+		const aliases: unknown = await this.mainProcessService.getChannel(REVIEW_DESKTOP_CHANNEL).call("listSshAliases");
+		return Array.isArray(aliases) ? aliases.filter((alias): alias is string => typeof alias === "string") : [];
+	}
+
+	async retryRemoteHost(alias: string): Promise<void> {
+		await this.mainProcessService.getChannel(REVIEW_DESKTOP_CHANNEL).call("retryRemoteHost", alias);
 	}
 
 	async saveDiffrSummarizer(input: ReviewDiffrSummarizerInput): Promise<ReviewDiffrConfig> {

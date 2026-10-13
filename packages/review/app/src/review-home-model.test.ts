@@ -28,6 +28,25 @@ const board: ReviewApiSummary = {
 };
 
 describe("Home model", () => {
+  it("names a remote repository after its host and keeps each host's apart", () => {
+    const remote = (host: string): ReviewApiSummary => ({
+      ...board,
+      reviewId: host,
+      host,
+      repositoryGroup: { key: `${host}:repo`, label: "devdotfast/whiteboard" },
+    });
+
+    expect(
+      homeRepositories([remote("devbox"), remote("other"), board]).map(
+        (repo) => repo.label,
+      ),
+    ).toEqual([
+      "devbox: devdotfast/whiteboard",
+      "devdotfast/whiteboard",
+      "other: devdotfast/whiteboard",
+    ]);
+  });
+
   it("uses rolling seven-day boundaries and unread precedence independent of working", () => {
     const read = { ...board, viewedAt: board.createdAt };
     expect(

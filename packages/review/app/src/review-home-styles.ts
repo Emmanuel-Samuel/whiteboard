@@ -313,6 +313,7 @@ export const styles = stylex.create({
     direction: "rtl",
     textAlign: "left",
   },
+  unavailableRow: { opacity: 0.55 },
   time: {
     color: tokens.inkFaint,
     fontVariantNumeric: "tabular-nums",
