@@ -430,7 +430,7 @@ function renderLanding(): void {
   blurb.append(
     "Structural diffs powered by ",
     repo,
-    ", computed in your browser with WASM. Your GitHub token stays on this device and goes only to GitHub.",
+    ", computed in your browser with WASM.",
   );
   const input = landing.appendChild(element("input"));
   input.placeholder = "github.com/owner/repo/pull/123";
