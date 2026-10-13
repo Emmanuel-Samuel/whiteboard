@@ -875,6 +875,7 @@ body {
 }
 .app-mobile-fold-actions > button {
   flex: 1;
+  min-height: 44px;
 }
 
 /* Mobile navigation uses the desktop tree's status marks and line-count colors. */
@@ -884,7 +885,8 @@ body {
 .app-mobile-files-heading .app-mobile-files-close {
   border: 0;
   background: transparent;
-  width: 40px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   font: 24px/1 sans-serif;
 }
@@ -916,8 +918,8 @@ body {
 .app-mobile-files-heading .app-mobile-tree-tool {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border: 0;
   border-radius: 5px;
   background: transparent;
@@ -966,7 +968,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
+  min-height: 44px;
   padding: 0 4px;
   white-space: nowrap;
   overflow: hidden;
@@ -996,8 +998,8 @@ body {
 }
 .app-mobile-file-row {
   width: 100%;
-  min-height: 28px;
-  height: 28px;
+  min-height: 44px;
+  height: 44px;
   padding: 0 4px;
   border: 0;
   border-radius: 4px;
@@ -1128,7 +1130,7 @@ body {
   .app-mobile-folder-label {
     color: var(--vscode-foreground);
     font-weight: 400;
-    min-height: 28px;
+    min-height: 44px;
   }
   .app-mobile-file-row {
     gap: 4px;
@@ -1156,7 +1158,7 @@ body {
     gap: 4px;
   }
   .app-mobile-fold-actions .app-button {
-    min-height: 32px;
+    min-height: 44px;
     border: 0;
     font-size: 12px;
     color: var(--vscode-descriptionForeground);

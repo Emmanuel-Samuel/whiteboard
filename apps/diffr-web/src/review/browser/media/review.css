@@ -805,6 +805,22 @@ body
   font-weight: 600;
 }
 
+/* A file's name gives way before its extension. */
+.review-changed-files-row:not(.review-changed-files-folder)
+  .review-changed-files-label {
+  display: flex;
+}
+
+.review-changed-files-stem {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.review-changed-files-extension {
+  flex: none;
+}
+
 .review-canvas-part > .review-canvas-container {
   display: grid;
   grid-template-rows: minmax(0, 1fr);

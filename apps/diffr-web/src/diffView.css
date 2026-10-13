@@ -258,7 +258,12 @@
   width: calc(var(--dv-digits, 3) * 1ch + 36px);
   padding-right: 8px;
   background: var(--vscode-editor-background);
-  color: var(--vscode-editorLineNumber-foreground);
+  /* The editor's own numbers are too faint to read on a tinted row; these keep about 4.5:1. */
+  color: color-mix(
+    in srgb,
+    var(--vscode-editorLineNumber-activeForeground) 80%,
+    var(--vscode-editorLineNumber-foreground)
+  );
   user-select: none;
   -webkit-user-select: none;
 }
@@ -758,7 +763,7 @@ a.dv-open.codicon {
 }
 
 .dv:not(.is-compact) .dv-row.has-fold .dv-gutter:hover {
-  color: var(--vscode-editorLineNumber-activeForeground);
+  color: var(--vscode-editor-foreground);
 }
 
 .dv:not(.is-compact) .dv-row.has-fold:active {
