@@ -874,3 +874,143 @@ a.dv-open.codicon {
 .dv-scope-removed {
   color: var(--vscode-gitDecoration-deletedResourceForeground);
 }
+
+/* The lit scope's indentation folds it on click. */
+.dv.is-lane .dv-code {
+  cursor: pointer;
+}
+
+/* The scopes around a line, to pick one to fold: a menu by its number, or a phone's sheet. */
+.dv-scopes {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 280px;
+  max-width: min(440px, calc(100vw - 16px));
+  padding: 4px 0;
+  border: 1px solid
+    var(--vscode-editorWidget-border, var(--vscode-panel-border));
+  border-radius: 8px;
+  background: var(
+    --vscode-editorWidget-background,
+    var(--vscode-editor-background)
+  );
+  box-shadow: 0 8px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.16));
+  color: var(--vscode-foreground);
+  font:
+    13px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+.dv-scopes.is-sheet {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-width: none;
+  padding: 10px 0 calc(12px + env(safe-area-inset-bottom));
+  border-width: 1px 0 0;
+  border-radius: 16px 16px 0 0;
+}
+
+.dv-scopes.is-sheet::before {
+  content: "";
+  align-self: center;
+  width: 36px;
+  height: 5px;
+  margin-bottom: 6px;
+  border-radius: 3px;
+  background: var(--vscode-panel-border);
+}
+
+.dv-scopes-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.dv-scopes-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 12px 8px;
+}
+
+.is-sheet .dv-scopes-heading {
+  padding: 6px 20px 12px;
+}
+
+.dv-scopes-title {
+  font-weight: 600;
+}
+
+.is-sheet .dv-scopes-title {
+  font-size: 17px;
+}
+
+.dv-scopes-line,
+.dv-scopes-meta,
+.dv-scopes-count {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+.dv-scopes-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 12px;
+  border: 0;
+  border-top: 1px solid var(--vscode-panel-border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.is-sheet .dv-scopes-item {
+  min-height: 56px;
+  padding: 4px 20px;
+}
+
+.dv-scopes-item:hover,
+.dv-scopes-item:focus-visible {
+  outline: none;
+  background: var(
+    --vscode-list-hoverBackground,
+    var(--vscode-toolbar-hoverBackground)
+  );
+}
+
+.dv-scopes-swatch {
+  flex: none;
+  width: 4px;
+  height: 24px;
+  border-radius: 2px;
+  background: var(--vscode-textLink-foreground);
+}
+
+.dv-scopes-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dv-scopes-label {
+  overflow: hidden;
+  font-family: "Geist Mono", ui-monospace, Menlo, monospace;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dv-scopes-count {
+  flex: none;
+}

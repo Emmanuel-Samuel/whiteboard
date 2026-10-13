@@ -440,6 +440,7 @@ export class DiffView extends Disposable {
   }
 
   private applyScreen(): void {
+    this.ch = undefined;
     this.root.classList.toggle("is-compact", this.compact);
     this.sidebar.hidden = this.compact || this.sidebarHidden;
   }
@@ -1083,6 +1084,7 @@ export class DiffView extends Disposable {
           absent.tabIndex = -1;
           absent.setAttribute("aria-hidden", "true");
         }
+
         segment(left, right);
 
         return;
@@ -1319,6 +1321,33 @@ export class DiffView extends Disposable {
     const line = target.closest<HTMLElement>(".dv-row");
 
     if (line) this.focusRow(line, false);
+
+    // A desktop folds the lit scope from its lane, the indentation beside its rail.
+    if (
+      !this.compact &&
+      this.lane &&
+      this.hover &&
+      target.closest(".dv-code")
+    ) {
+      this.session.setRegionCollapsed(this.hover.path, this.hover.fold, true);
+
+      return;
+    }
+
+    // A line inside a scope lists, from its number, every scope around it to fold.
+    if (
+      line &&
+      !line.classList.contains("has-fold") &&
+      target.closest(".dv-gutter")
+    ) {
+      const scopes = this.scopesAt(line).filter((scope) => !scope.collapsed);
+
+      if (scopes.length) {
+        this.openScopeList(line, scopes);
+
+        return;
+      }
+    }
 
     // A phone folds from anywhere on the row; a desktop from its gutter, leaving the code to
     // select and click.
@@ -1687,10 +1716,18 @@ export class DiffView extends Disposable {
 
   /** The fold `row` heads, else the smallest open scope around it, on the row's side. */
   private scopeAt(row: HTMLElement): Scope | undefined {
+    return this.scopesAt(row)[0];
+  }
+
+  /**
+   * The scopes around `row` on its side, innermost first: the fold it heads, if any, then each
+   * open scope it sits in.
+   */
+  private scopesAt(row: HTMLElement): Scope[] {
     const path = row.closest<HTMLElement>(".dv-file")?.dataset.path;
     const diff = path ? this.session.getTextDiff(path) : undefined;
 
-    if (!path || !diff) return undefined;
+    if (!path || !diff) return [];
 
     const side =
       row.dataset.head !== undefined && row.dataset.side !== "lhs"
@@ -1704,21 +1741,95 @@ export class DiffView extends Disposable {
       this.session.isRegionCollapsed(path, foldable.foldStateId) ??
       foldable.collapsedByDefault;
 
-    const foldable =
-      foldables.find((candidate) => candidate.line === line) ??
-      foldables
-        .filter(
-          (candidate) =>
-            candidate.rail &&
-            !collapsed(candidate) &&
-            candidate.rail.start <= line &&
-            line <= candidate.rail.end,
-        )
-        .sort(
-          (a, b) => a.rail!.end - a.rail!.start - (b.rail!.end - b.rail!.start),
-        )[0];
+    const own = foldables.find((candidate) => candidate.line === line);
 
-    return foldable && { path, side, foldable, collapsed: collapsed(foldable) };
+    const around = foldables
+      .filter(
+        (candidate) =>
+          candidate !== own &&
+          candidate.rail &&
+          !collapsed(candidate) &&
+          candidate.rail.start <= line &&
+          line <= candidate.rail.end,
+      )
+      .sort(
+        (a, b) => a.rail!.end - a.rail!.start - (b.rail!.end - b.rail!.start),
+      );
+
+    return (own ? [own, ...around] : around).map((foldable) => ({
+      path,
+      side,
+      foldable,
+      collapsed: collapsed(foldable),
+    }));
+  }
+
+  private readonly linesBySource = new WeakMap<StructuralSource, string[]>();
+
+  /** A side's source lines, split once per diff. */
+  private linesOf(path: string, side: "lhs" | "rhs"): string[] {
+    const source = this.session.getTextDiff(path)?.[side];
+
+    if (!source) return [];
+    let lines = this.linesBySource.get(source);
+
+    if (!lines) {
+      lines = sourceLines(source.text);
+      this.linesBySource.set(source, lines);
+    }
+
+    return lines;
+  }
+
+  /** The code font's column width, measured once per screen. */
+  private ch: number | undefined;
+
+  /**
+   * Of `scopes`, the one the pointer's column picks: the innermost whose guide is left of it, so
+   * moving into the indentation steps out a scope at each guide. `lane` is whether the pointer is
+   * in the line's indentation, where a click folds that scope.
+   */
+  private pickScope(
+    row: HTMLElement,
+    scopes: readonly Scope[],
+    clientX: number,
+  ): { scope: Scope; lane: boolean } | undefined {
+    const code = row.querySelector<HTMLElement>(".dv-code");
+    const first = scopes[0];
+
+    if (!code || !first) return undefined;
+
+    if (this.ch === undefined) {
+      const probe = code.appendChild(
+        element("span", undefined, "0".repeat(10)),
+      );
+
+      this.ch = probe.getBoundingClientRect().width / 10 || 8;
+      probe.remove();
+    }
+
+    // Guides sit 8px into the code, as diffView.css lays them.
+    const column = (clientX - code.getBoundingClientRect().left - 8) / this.ch;
+    const lines = this.linesOf(first.path, first.side);
+
+    const scope =
+      scopes.find(
+        (candidate) =>
+          column > indentColumns(lines[candidate.foldable.line] ?? ""),
+      ) ?? scopes.at(-1)!;
+
+    const line = Number(
+      first.side === "rhs" ? row.dataset.head : row.dataset.base,
+    );
+
+    const source = lines[line] ?? "";
+
+    return {
+      scope,
+      lane:
+        !scope.collapsed &&
+        (source.trim() === "" || column < indentColumns(source)),
+    };
   }
 
   /**
@@ -1812,9 +1923,18 @@ export class DiffView extends Disposable {
   }
 
   private hover:
-    | { key: string; path: string; marks: HTMLElement[] }
+    | {
+        key: string;
+        path: string;
+        fold: number;
+        marks: HTMLElement[];
+        hint?: { hint: HTMLElement; code: Element };
+      }
     | undefined;
   private hoverRow: HTMLElement | undefined;
+  private hoverScopes: Scope[] = [];
+  /** Whether the pointer is in the lit scope's indentation, where a click folds it. */
+  private lane = false;
 
   /**
    * A desktop lights the scope under the pointer: its header, its viewed control and a rail down
@@ -1832,23 +1952,37 @@ export class DiffView extends Disposable {
         if (target?.closest(".dv-rail, .dv-scope")) return;
         const row = target?.closest<HTMLElement>(".dv-row") ?? undefined;
 
-        if (row === this.hoverRow) return;
-        this.hoverRow = row;
-        const scope = row && this.scopeAt(row);
+        // While the scope list is open, its rows choose what is lit.
+        if (this.scopeList) return;
+
+        if (row !== this.hoverRow) {
+          this.hoverRow = row;
+          this.hoverScopes = row ? this.scopesAt(row) : [];
+        }
+
+        const pick =
+          row && this.pickScope(row, this.hoverScopes, event.clientX);
+
+        const scope = pick?.scope;
 
         const key =
           scope &&
           `${scope.path}\0${scope.side}\0${scope.foldable.foldStateId}`;
 
-        if (key === this.hover?.key) return;
-        this.clearScope();
+        if (key !== this.hover?.key) {
+          this.clearScope();
 
-        if (scope && key) this.showScope(scope, key);
+          if (scope && key) this.showScope(scope, key);
+        }
+
+        this.setLane(!!pick?.lane && !!this.hover);
       },
       { passive: true },
     );
     this.root.addEventListener("pointerleave", () => {
+      if (this.scopeList) return;
       this.hoverRow = undefined;
+      this.hoverScopes = [];
       this.clearScope();
     });
 
@@ -1904,7 +2038,7 @@ export class DiffView extends Disposable {
     if (!file?.built) return;
     const { side, foldable } = scope;
     const marks: HTMLElement[] = [];
-    this.hover = { key, path: scope.path, marks };
+    this.hover = { key, path: scope.path, fold: foldable.foldStateId, marks };
     const cells = this.split ? `.dv-row[data-side="${side}"]` : ".dv-row";
     const attribute = side === "rhs" ? "head" : "base";
 
@@ -1917,7 +2051,8 @@ export class DiffView extends Disposable {
       header.classList.add("is-scope-head");
       marks.push(header);
 
-      if (!header.querySelector(".dv-scope")) {
+      // A phone marks scopes viewed from the file, not from a control on each header.
+      if (!this.compact && !header.querySelector(".dv-scope")) {
         const control = this.scopeControl(
           scope.path,
           foldable.foldStateId,
@@ -1989,6 +2124,8 @@ export class DiffView extends Disposable {
     const headerCode = header?.querySelector(".dv-code");
     marks.push(hint);
 
+    if (headerCode) this.hover.hint = { hint, code: headerCode };
+
     // A band between two of the scope's rows hides lines, so the rail stops at it and resumes.
     const runs: [HTMLElement, HTMLElement[]][] = [];
 
@@ -2005,8 +2142,10 @@ export class DiffView extends Disposable {
           runs.push([parent, run]);
           run = [];
         }
+
         run.push(row);
       }
+
       runs.push([parent, run]);
     }
 
@@ -2025,8 +2164,8 @@ export class DiffView extends Disposable {
 
       // A header drawn in a block away from the screen can't carry the hint.
       if (headerCode) {
-        rail.addEventListener("pointerenter", () => headerCode.append(hint));
-        rail.addEventListener("pointerleave", () => hint.remove());
+        rail.addEventListener("pointerenter", () => this.showHint(true));
+        rail.addEventListener("pointerleave", () => this.showHint(this.lane));
       } else rail.title = `Click to ${label}`;
       rail.style.top = `${top - bounds.top}px`;
       rail.style.height = `${bottom - top}px`;
@@ -2035,7 +2174,25 @@ export class DiffView extends Disposable {
     }
   }
 
+  /** Whether the pointer is in the lit scope's lane: a click there folds it, and says so. */
+  private setLane(lane: boolean): void {
+    this.lane = lane;
+    this.root.classList.toggle("is-lane", lane);
+    this.showHint(lane);
+  }
+
+  private showHint(show: boolean): void {
+    const hint = this.hover?.hint;
+
+    if (!hint) return;
+
+    if (show) hint.code.append(hint.hint);
+    else hint.hint.remove();
+  }
+
   private clearScope(): void {
+    this.lane = false;
+    this.root.classList.remove("is-lane");
     CSS.highlights?.delete("diffr-scope-brace");
 
     for (const mark of this.hover?.marks ?? [])
@@ -2044,6 +2201,154 @@ export class DiffView extends Disposable {
       else mark.remove();
 
     this.hover = undefined;
+  }
+
+  private scopeList:
+    | { list: HTMLElement; scrim?: HTMLElement; dispose: () => void }
+    | undefined;
+
+  /**
+   * Every scope around `row`, innermost first, each a row that folds it: a sheet on a phone, a
+   * menu beside the number on a desktop. The scope a row would fold is lit behind it.
+   */
+  private openScopeList(row: HTMLElement, scopes: readonly Scope[]): void {
+    this.closeScopeList();
+    const sheet = this.compact;
+    const list = element("div", sheet ? "dv-scopes is-sheet" : "dv-scopes");
+    list.setAttribute("role", "menu");
+
+    const line =
+      Number(
+        row.dataset.side === "lhs" || row.dataset.head === undefined
+          ? row.dataset.base
+          : row.dataset.head,
+      ) + 1;
+
+    list.setAttribute("aria-label", `Fold a scope around line ${line}`);
+    const heading = list.appendChild(element("div", "dv-scopes-heading"));
+    heading.append(
+      element("span", "dv-scopes-title", "Fold"),
+      element("span", "dv-scopes-line", `around line ${line}`),
+    );
+    const lines = this.linesOf(scopes[0]!.path, scopes[0]!.side);
+
+    const light = (scope: Scope) => {
+      const key = `${scope.path}\0${scope.side}\0${scope.foldable.foldStateId}`;
+
+      if (key === this.hover?.key) return;
+      this.clearScope();
+      this.showScope(scope, key);
+    };
+
+    scopes.forEach((scope, index) => {
+      const { foldable } = scope;
+      const end = foldable.rail?.end ?? foldable.line;
+      const count = foldable.rail ? foldable.rail.end - foldable.rail.start : 0;
+      const item = list.appendChild(element("button", "dv-scopes-item"));
+      item.type = "button";
+      item.setAttribute("role", "menuitem");
+      const swatch = item.appendChild(element("span", "dv-scopes-swatch"));
+      swatch.style.opacity = String(Math.max(0.25, 1 - index * 0.35));
+      const text = item.appendChild(element("span", "dv-scopes-text"));
+      let header = (lines[foldable.line] ?? "").trim();
+
+      // A bare bracket says little; its first line says which one it is.
+      if (header.length <= 2) {
+        const next = lines
+          .slice(foldable.line + 1, end)
+          .find((text) => text.trim())
+          ?.trim();
+
+        if (next) header = `${header} ${next}`;
+      }
+
+      text.append(
+        element(
+          "span",
+          "dv-scopes-label",
+          header.length > 44 ? `${header.slice(0, 43)}…` : header,
+        ),
+        element(
+          "span",
+          "dv-scopes-meta",
+          `${index === 0 ? "innermost · " : ""}lines ${foldable.line + 1}–${end + 1}`,
+        ),
+      );
+      item.append(
+        element(
+          "span",
+          "dv-scopes-count",
+          `${count} line${count === 1 ? "" : "s"}`,
+        ),
+      );
+      item.addEventListener("pointerenter", () => light(scope));
+      item.addEventListener("focus", () => light(scope));
+      item.addEventListener("click", () => {
+        this.closeScopeList();
+        this.session.setRegionCollapsed(scope.path, foldable.foldStateId, true);
+      });
+    });
+
+    const scrim = sheet ? element("div", "dv-scopes-scrim") : undefined;
+    const close = () => this.closeScopeList();
+    scrim?.addEventListener("click", close);
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+      }
+    };
+
+    const onPointer = (event: PointerEvent) => {
+      if (!(event.target instanceof Node) || !list.contains(event.target))
+        close();
+    };
+
+    document.addEventListener("keydown", onKey, true);
+    // A press outside closes a menu; a sheet's scrim takes its own.
+
+    if (!sheet) document.addEventListener("pointerdown", onPointer, true);
+    this.root.addEventListener("scroll", close, { passive: true });
+
+    this.scopeList = {
+      list,
+      scrim,
+      dispose: () => {
+        document.removeEventListener("keydown", onKey, true);
+        document.removeEventListener("pointerdown", onPointer, true);
+        this.root.removeEventListener("scroll", close);
+      },
+    };
+
+    // Inside the app, where the theme's colors apply.
+    const host = this.root.closest(".monaco-component") ?? document.body;
+
+    if (scrim) host.append(scrim);
+    host.append(list);
+
+    if (!sheet) {
+      const at = row.querySelector(".dv-gutter")!.getBoundingClientRect();
+      const bounds = list.getBoundingClientRect();
+      list.style.left = `${Math.min(at.right + 4, innerWidth - bounds.width - 8)}px`;
+      list.style.top = `${Math.min(at.bottom + 2, innerHeight - bounds.height - 8)}px`;
+    }
+
+    light(scopes[0]!);
+    list
+      .querySelector<HTMLElement>(".dv-scopes-item")
+      ?.focus({ preventScroll: true });
+  }
+
+  private closeScopeList(): void {
+    const open = this.scopeList;
+
+    if (!open) return;
+    this.scopeList = undefined;
+    open.dispose();
+    open.list.remove();
+    open.scrim?.remove();
+    this.clearScope();
   }
 
   /** Fold the open scope under a pinch, or open the fold nearest one. */
