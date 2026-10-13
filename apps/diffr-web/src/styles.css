@@ -146,6 +146,10 @@ body {
   color: var(--vscode-descriptionForeground);
 }
 
+.app-landing p a {
+  color: inherit;
+}
+
 .app-landing input,
 .app-dialog input,
 .app-dialog textarea {
