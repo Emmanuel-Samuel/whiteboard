@@ -424,12 +424,13 @@ function togglePanel(panel: "stats" | "engine"): void {
 function renderLanding(): void {
   const landing = body.appendChild(element("form", "app-landing"));
   landing.appendChild(element("h1", undefined, "diffr"));
-  landing.appendChild(
-    element(
-      "p",
-      undefined,
-      "Structural diffs of GitHub pull requests, worked out in your browser.",
-    ),
+  const blurb = landing.appendChild(element("p"));
+  const repo = element("a", undefined, "diffr");
+  repo.href = "https://github.com/devdotfast/whiteboard";
+  blurb.append(
+    "Structural diffs in your browser powered by ",
+    repo,
+    ". All diffs are computed in your browser with WASM. All secrets stay local.",
   );
   const input = landing.appendChild(element("input"));
   input.placeholder = "github.com/owner/repo/pull/123";
