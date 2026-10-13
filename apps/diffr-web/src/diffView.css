@@ -679,6 +679,20 @@ a.dv-open.codicon {
   padding: 2px 4px 2px 12px;
 }
 
+/* A desktop has the width for one line: the path, its counts, then the note. */
+.dv:not(.is-compact) .dv-header-title {
+  display: contents;
+}
+
+.dv:not(.is-compact) .dv-header-path {
+  flex: 1;
+}
+
+.dv:not(.is-compact) .dv-header-note,
+.dv:not(.is-compact) .dv-header > :is(.dv-open, .review-viewed-check) {
+  order: 1;
+}
+
 .dv:not(.is-compact) .dv-header .review-viewed-check {
   margin: 0 10px 0 4px;
 }
