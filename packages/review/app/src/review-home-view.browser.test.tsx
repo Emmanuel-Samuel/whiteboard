@@ -175,7 +175,7 @@ describe("Home interactions", () => {
     expect(titles("Last 7 days")).toEqual(["Read"]);
     expect(titles("Older than 7 days")).toEqual([]);
     await click("Sort whiteboards");
-    await click("Title");
+    await act(async () => host.select("title"));
     expect(titles("Unread")).toEqual(["Alpha", "Zulu"]);
 
     const earlier = container.querySelector<HTMLButtonElement>(
@@ -574,15 +574,13 @@ describe("Home interactions", () => {
     await key("a", { metaKey: true });
     expect(container.textContent).toContain("4 selected");
   });
-  it("lets the Sort menu consume Escape before clearing the selection", async () => {
+  it("keeps the selection while the Sort menu is open", async () => {
     await render([summary("One"), summary("Two")]);
     await select("One");
     await click("Sort whiteboards");
 
-    await key("Escape", {}, document.activeElement!);
-    expect(button("Sort whiteboards").getAttribute("aria-expanded")).toBe(
-      "false",
-    );
+    await key("Escape");
+    await act(async () => host.menu.onHide());
     expect(
       container.querySelector<HTMLInputElement>(
         'input[aria-label="Select One"]',
@@ -722,7 +720,7 @@ describe("Home interactions", () => {
     await key("Backspace", { metaKey: true });
     expect(onTrash).toHaveBeenCalledTimes(2);
     expect(titles()).toEqual([]);
-    await click("Undo");
+    await act(async () => host.runAction("Undo"));
     expect(onRestore).toHaveBeenCalledTimes(2);
     expect(titles()).toHaveLength(2);
     await render([summary("Old", { trashedAt: "2026-10-01" })], {
@@ -819,29 +817,28 @@ describe("Home interactions", () => {
     expect(onRestore).toHaveBeenCalledOnce();
     expect(titles()).toEqual([]);
   });
-  it("confirms permanent deletion with Cancel focused, ignores Enter, and has no Undo afterwards", async () => {
+  it("confirms permanent deletion through the host and offers no Undo", async () => {
     const onDelete = vi.fn<(review: ReviewApiSummary) => Promise<void>>(
       async () => {},
     );
 
+    const confirmDelete = vi.mocked(host.ui.confirmDelete!);
+
+    confirmDelete.mockResolvedValueOnce(false);
     await render([summary("Gone", { trashedAt: "2026-10-10" })], {
       onDelete,
     });
     await click("1 in Trash ›");
     await select("Gone");
     await key("Backspace", { metaKey: true });
-    expect(document.activeElement).toBe(button("Cancel"));
-    await key("Enter", {}, document.activeElement!);
+    expect(confirmDelete).toHaveBeenLastCalledWith(["Gone"]);
     expect(onDelete).not.toHaveBeenCalled();
-    await click("Cancel");
-    expect(container.querySelector("dialog")).toBeNull();
     await key("Backspace", { metaKey: true });
-    await click("Delete");
     expect(onDelete).toHaveBeenCalledOnce();
     expect(titles()).toEqual([]);
-    expect(container.querySelector('[aria-label="Undo"]')).toBeNull();
+    expect(host.notification?.actions).toBeUndefined();
   });
-  it("undoes only the toast batch with Cmd+Z, including Restore, and stops after dismissal", async () => {
+  it("undoes only the notified batch with Cmd+Z, including Restore, and stops after dismissal", async () => {
     const onTrash = vi.fn<(review: ReviewApiSummary) => Promise<void>>(
         async () => {},
       ),
@@ -863,7 +860,7 @@ describe("Home interactions", () => {
     expect(titles()).toEqual(["One", "Two"]);
     await select("One");
     await key("Backspace", { metaKey: true });
-    await click("View Trash");
+    await act(async () => host.runAction("View Trash"));
     await select("One");
     await key("r");
     expect(titles()).toEqual([]);
@@ -871,35 +868,10 @@ describe("Home interactions", () => {
     expect(titles()).toEqual(["One"]);
     await key("a", { metaKey: true });
     await key("r");
-    await click("Dismiss notification");
+    await act(async () => host.dismiss());
     const count = onTrash.mock.calls.length;
     await key("z", { metaKey: true });
     expect(onTrash).toHaveBeenCalledTimes(count);
-  });
-  it("stops intercepting Cmd+Z when the toast expires", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-
-    try {
-      const onTrash = vi.fn<(review: ReviewApiSummary) => Promise<void>>(
-        async () => {},
-      );
-
-      const onRestore = vi.fn<(review: ReviewApiSummary) => Promise<void>>(
-        async () => {},
-      );
-
-      await render([summary("One")], { onTrash, onRestore });
-      await key("Backspace", { metaKey: true }, button("Open One"));
-      expect(onTrash).toHaveBeenCalledOnce();
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(8001);
-      });
-      expect(container.querySelector('[aria-label="Undo"]')).toBeNull();
-      await key("z", { metaKey: true });
-      expect(onRestore).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
   });
   it("restores failed deletions and keeps successful ones hidden until catalog acknowledgement", async () => {
     const deletion = Promise.withResolvers<void>();
