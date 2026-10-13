@@ -1989,7 +1989,28 @@ export class DiffView extends Disposable {
     const headerCode = header?.querySelector(".dv-code");
     marks.push(hint);
 
+    // A band between two of the scope's rows hides lines, so the rail stops at it and resumes.
+    const runs: [HTMLElement, HTMLElement[]][] = [];
+
     for (const [parent, rows] of groups) {
+      let run: HTMLElement[] = [];
+
+      for (const row of rows) {
+        let between = run.at(-1)?.nextElementSibling;
+
+        while (between && between !== row && !between.matches(".dv-band"))
+          between = between.nextElementSibling;
+
+        if (run.length && between !== row) {
+          runs.push([parent, run]);
+          run = [];
+        }
+        run.push(row);
+      }
+      runs.push([parent, run]);
+    }
+
+    for (const [parent, rows] of runs) {
       const bounds = parent.getBoundingClientRect();
       const top = rows[0]!.getBoundingClientRect().top;
       const bottom = rows.at(-1)!.getBoundingClientRect().bottom;
