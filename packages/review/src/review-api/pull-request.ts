@@ -1,9 +1,8 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
-import { type LocalVcsKind, parseGitRemote } from "@dev.fast/local-vcs";
+import type { LocalVcsKind } from "@dev.fast/local-vcs";
 import { errorMessage } from "@dev.fast/trace-core";
-import { z } from "zod";
 
 import { ReviewInputError } from "./document.js";
 
@@ -25,14 +24,12 @@ export interface PullRequestRecord {
   slug: string;
   number: number;
   title: string;
+  /** e.g. refs/pull/7/head */
+  headRef: string;
   baseRefName: string;
   /** GitHub's base commit, frozen at the PR's last update. */
   baseRefOid?: string;
 }
-
-const GH_TIMEOUT_MS = 20_000;
-
-const API_TIMEOUT_MS = 15_000;
 
 const FETCH_TIMEOUT_MS = 120_000;
 
@@ -71,127 +68,12 @@ export const defaultPullRequestDeps: PullRequestDeps = {
   fetch: (input, init) => fetch(input, init),
 };
 
-/** Host, owner/repo and number from a canonical PR URL (validated by the command schema). */
-export function pullRequestAddress(url: string) {
-  const { hostname, pathname } = new URL(url);
-  const [, owner, repo, , number] = pathname.split("/");
-
-  return { host: hostname, slug: `${owner}/${repo}`, number: Number(number) };
-}
-
-const metadataSchema = z.object({
-  number: z.number().int().positive(),
-  title: z.string(),
-  baseRefName: z.string().min(1),
-  baseRefOid: z.string().optional(),
-});
-
-/** gh first (it carries the user's auth), then, for github.com only, GitHub's
- * public REST API: Enterprise hosts require gh. */
-export async function readPullRequest(
-  url: string,
-  deps: PullRequestDeps,
-): Promise<PullRequestRecord> {
-  const { host, slug, number } = pullRequestAddress(url);
-  let ghFailure: string;
-
-  try {
-    const stdout = await deps.run(
-      "gh",
-      [
-        "pr",
-        "view",
-        String(number),
-        "--repo",
-        `${host}/${slug}`,
-        "--json",
-        "number,title,baseRefName,baseRefOid",
-      ],
-      { timeoutMs: GH_TIMEOUT_MS },
-    );
-
-    return { host, slug, ...metadataSchema.parse(JSON.parse(stdout)) };
-  } catch (error) {
-    ghFailure = firstLine(errorMessage(error));
-  }
-
-  if (host !== "github.com")
-    throw new ReviewInputError(
-      `Could not read ${url}: gh failed (${ghFailure}). Run \`gh auth login --hostname ${host}\` with an account that can read the repository, then retry.`,
-      409,
-    );
-
-  let response: Response;
-
-  try {
-    response = await deps.fetch(
-      `https://api.github.com/repos/${slug}/pulls/${number}`,
-      {
-        headers: {
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-        signal: AbortSignal.timeout(API_TIMEOUT_MS),
-      },
-    );
-  } catch (error) {
-    throw unreadable(
-      url,
-      ghFailure,
-      `the GitHub API is unreachable (${firstLine(errorMessage(error))})`,
-    );
-  }
-
-  if (response.status === 404)
-    throw new ReviewInputError(
-      `${url} was not found: it does not exist, or it is private and gh is not signed in to an account that can read it (run \`gh auth status\`). gh said: ${ghFailure}`,
-      404,
-    );
-
-  if (response.status === 403 || response.status === 429)
-    throw unreadable(
-      url,
-      ghFailure,
-      response.headers.get("x-ratelimit-remaining") === "0" ||
-        response.status === 429
-        ? "the unauthenticated GitHub API rate limit is exhausted"
-        : "the GitHub API refused the request",
-    );
-
-  if (!response.ok)
-    throw unreadable(
-      url,
-      ghFailure,
-      `the GitHub API returned HTTP ${response.status}`,
-    );
-
-  const parsed = z
-    .object({
-      number: z.number(),
-      title: z.string(),
-      base: z.object({ ref: z.string().min(1), sha: z.string() }),
-    })
-    .safeParse(await response.json().catch(() => undefined));
-
-  if (!parsed.success)
-    throw unreadable(url, ghFailure, "the GitHub API response was malformed");
-
-  return {
-    host,
-    slug,
-    number: parsed.data.number,
-    title: parsed.data.title,
-    baseRefName: parsed.data.base.ref,
-    baseRefOid: parsed.data.base.sha,
-  };
-}
-
-/** Remotes by the host and owner/repo their configured URL names. The
- * configured URL, not the insteadOf rewrite: a mirror still names its repo. */
-export async function githubRemotes(
+/** Remotes by their configured URL, not the insteadOf rewrite: a mirror
+ * still names its repo. */
+export async function remoteUrls(
   gitDir: string,
   deps: PullRequestDeps,
-): Promise<{ name: string; host: string; slug: string }[]> {
+): Promise<{ name: string; url: string }[]> {
   const stdout = await deps
     .run(
       "git",
@@ -208,23 +90,16 @@ export async function githubRemotes(
 
   return stdout.split("\n").flatMap((line) => {
     const match = /^remote\.(.+)\.url\s+(\S+)/.exec(line.trim());
-    const remote = match && parseGitRemote(match[2]!);
 
-    return match && remote
-      ? [{ name: match[1]!, host: remote.host, slug: remote.slug }]
-      : [];
+    return match ? [{ name: match[1]!, url: match[2]! }] : [];
   });
 }
 
 /** Refs Review owns for one PR; the user's branches and bookmarks never move. */
-export function pullRequestRefs(pr: {
-  host: string;
-  slug: string;
-  number: number;
-}) {
+function pullRequestRefs(provider: string, pr: PullRequestRecord) {
   // github.com keeps the host-less namespace existing checkouts already hold.
   const repository = `${pr.host === "github.com" ? "" : `${pr.host}/`}${pr.slug}`;
-  const prefix = `refs/review/github/${repository.toLowerCase()}/pull/${pr.number}`;
+  const prefix = `refs/review/${provider}/${repository.toLowerCase()}/pull/${pr.number}`;
 
   return {
     head: `${prefix}/head`,
@@ -250,12 +125,13 @@ export async function fetchPullRequest(
     gitDir: string;
     kind: LocalVcsKind;
     remote: string;
+    provider: string;
     pullRequest: PullRequestRecord;
   },
   deps: PullRequestDeps,
 ): Promise<{ head: string; base: string }> {
   const { pullRequest: pr } = input;
-  const refs = pullRequestRefs(pr);
+  const refs = pullRequestRefs(input.provider, pr);
 
   const git = (args: string[], timeoutMs = LOCAL_TIMEOUT_MS) =>
     deps
@@ -298,14 +174,14 @@ export async function fetchPullRequest(
 
   try {
     await fetchRefs(
-      `+refs/pull/${pr.number}/head:${refs.head}`,
+      `+${pr.headRef}:${refs.head}`,
       `+refs/heads/${pr.baseRefName}:${refs.base}`,
     );
     baseTip = await commit(refs.base);
   } catch (error) {
     // The base branch may be gone; the head and the frozen base suffice.
     try {
-      await fetchRefs(`+refs/pull/${pr.number}/head:${refs.head}`);
+      await fetchRefs(`+${pr.headRef}:${refs.head}`);
     } catch {
       throw new ReviewInputError(
         `Could not fetch PR #${pr.number} from remote "${input.remote}" (${pr.slug}). Check \`git fetch ${input.remote}\` works with your Git credentials, then retry. Git said: ${firstLine(errorMessage(error))}`,
@@ -377,13 +253,6 @@ async function indexForJj(
   }
 }
 
-function unreadable(url: string, ghFailure: string, fallback: string) {
-  return new ReviewInputError(
-    `Could not read ${url}: gh failed (${ghFailure}) and ${fallback}. Run \`gh auth status\` and sign in with an account that can read the repository, then retry.`,
-    409,
-  );
-}
-
-function firstLine(text: string) {
+export function firstLine(text: string) {
   return text.split("\n")[0]!.slice(0, 300);
 }

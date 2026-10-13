@@ -78,12 +78,15 @@ import {
 import { decodeImage } from "./image-decode.js";
 import { mapInputSchema } from "./map-input.js";
 import {
+  type PullRequestAddress,
+  type PullRequestProvider,
+  resolvePullRequest,
+} from "./provider.js";
+import {
   type PullRequestDeps,
   defaultPullRequestDeps,
   fetchPullRequest,
-  githubRemotes,
-  pullRequestAddress,
-  readPullRequest,
+  remoteUrls,
 } from "./pull-request.js";
 import {
   type ResolvedPullRequest,
@@ -1145,20 +1148,20 @@ export class LocalReviewData {
     repository: { id?: string; preferred?: string },
   ): Promise<ResolvedPullRequest> {
     const deps = this.options.pullRequests ?? defaultPullRequestDeps;
-    const { host, slug, number } = pullRequestAddress(url);
+    const { provider, address } = resolvePullRequest(url);
 
     // Only a host a registered checkout already fetches from is contacted.
     const checkout = await this.pullRequestCheckout(
-      host,
-      slug,
+      provider,
+      address,
       repository,
       deps,
     );
 
-    const pullRequest = await readPullRequest(url, deps);
+    const pullRequest = await provider.readPullRequest(address, deps);
 
     const { head, base } = await fetchPullRequest(
-      { ...checkout, pullRequest },
+      { ...checkout, provider: provider.id, pullRequest },
       deps,
     );
 
@@ -1167,13 +1170,13 @@ export class LocalReviewData {
     return {
       target: { kind: "commits", repositoryId, head, base },
       pins: { repositoryId, base, head },
-      title: pullRequest.title.trim() || `PR #${number}`,
+      title: pullRequest.title.trim() || `PR #${address.number}`,
     };
   }
   /** A registered checkout with a remote for host/owner/repo, and that remote. */
   private async pullRequestCheckout(
-    host: string,
-    slug: string,
+    provider: PullRequestProvider,
+    address: PullRequestAddress,
     repository: { id?: string; preferred?: string },
     deps: PullRequestDeps,
   ) {
@@ -1196,10 +1199,8 @@ export class LocalReviewData {
 
       if (!vcs || !gitDir) continue;
 
-      const remote = (await githubRemotes(gitDir, deps)).find(
-        (entry) =>
-          entry.host === host &&
-          entry.slug.toLowerCase() === slug.toLowerCase(),
+      const remote = (await remoteUrls(gitDir, deps)).find((entry) =>
+        provider.matchesRemote(entry.url, address),
       );
 
       if (remote)
@@ -1212,6 +1213,7 @@ export class LocalReviewData {
         };
     }
 
+    const { host, slug } = address;
     const name = host === "github.com" ? slug : `${host}/${slug}`;
 
     throw new ReviewInputError(
