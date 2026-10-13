@@ -8,7 +8,6 @@ import { z } from "zod";
 import {
   FIRST_RETRY_MS,
   MAX_RETRY_MS,
-  errorCode,
   errorText,
   jitter,
   readBody,
@@ -19,10 +18,6 @@ const HEALTH_TIMEOUT_MS = 3_000;
 
 const HEARTBEAT_MS = 10_000;
 
-const TIMEOUTS_BEFORE_ATTACH = 3;
-
-const VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
-
 const INSTALLS = new Set<ReviewGatewayHostState["state"]>([
   "incompatible",
   "not-installed",
@@ -31,7 +26,6 @@ const INSTALLS = new Set<ReviewGatewayHostState["state"]>([
 const healthSchema = z.object({
   ok: z.literal(true),
   serverId: z.string().optional(),
-  instanceId: z.string(),
   version: z.string(),
 });
 
@@ -54,9 +48,6 @@ interface Host extends GatewayRemote {
   retryMs: number;
   retry?: NodeJS.Timeout;
   checking?: AbortController;
-  instanceId?: string;
-  restarted?: boolean;
-  timeouts?: number;
 }
 
 export function createGatewayHosts(input: {
@@ -138,8 +129,8 @@ export function createGatewayHosts(input: {
     host: Host,
     detail = `${host.alias} restarted; attaching again.`,
   ) {
-    if (host.restarted || closed) return;
-    host.restarted = true;
+    if (closed || !host.endpoint) return;
+    host.endpoint = undefined;
     clearTimeout(host.retry);
     host.checking?.abort();
     host.checking = undefined;
@@ -190,7 +181,7 @@ export function createGatewayHosts(input: {
   }
 
   async function check(host: Host) {
-    if (closed || !host.endpoint || host.problem || host.restarted) return;
+    if (closed || !host.endpoint || host.problem) return;
     clearTimeout(host.retry);
     host.checking?.abort();
     const abort = new AbortController();
@@ -198,8 +189,6 @@ export function createGatewayHosts(input: {
     const timeout = AbortSignal.timeout(HEALTH_TIMEOUT_MS);
     let health: z.infer<typeof healthSchema> | undefined;
     let reason = "it did not answer";
-    let code: string | undefined;
-    let timedOut = false;
 
     try {
       const response = await send(host, {
@@ -216,65 +205,32 @@ export function createGatewayHosts(input: {
       if (parsed.success) health = parsed.data;
       else reason = "it did not answer as a Whiteboard server";
     } catch (error) {
-      if (timeout.aborted) {
-        timedOut = true;
+      if (timeout.aborted)
         reason = `it did not answer within ${HEALTH_TIMEOUT_MS / 1_000} seconds`;
-      } else if (!abort.signal.aborted) {
-        code = errorCode(error);
-        reason = errorText(error);
-      }
+      else if (!abort.signal.aborted) reason = errorText(error);
     }
 
     if (host.checking !== abort) return;
     host.checking = undefined;
 
-    if (
-      !health &&
-      host.instanceId !== undefined &&
-      (code === "ECONNRESET" ||
-        code === "ECONNREFUSED" ||
-        code === "UND_ERR_SOCKET")
-    )
+    // /health leaves out serverId when it refuses the token, as after a restart.
+    if (health && health.serverId === undefined) return restartedHost(host);
+
+    if (!health && host.serverId !== undefined)
       return restartedHost(
         host,
         `${host.alias} is offline: ${reason}; attaching again.`,
-      );
-
-    host.timeouts = timedOut ? (host.timeouts ?? 0) + 1 : 0;
-
-    if (
-      host.instanceId !== undefined &&
-      host.timeouts >= TIMEOUTS_BEFORE_ATTACH
-    )
-      return restartedHost(
-        host,
-        `${host.alias} is offline: ${reason}, ${host.timeouts} times in a row; attaching again.`,
       );
 
     if (!health) {
       host.status = "offline";
       host.detail = `${host.alias} is offline: ${reason}.`;
       retryLater(host);
-    } else if (health.serverId === undefined) {
-      return restartedHost(host);
     } else {
-      const restarted =
-        host.serverId === health.serverId &&
-        host.instanceId !== health.instanceId;
-
       host.serverId = health.serverId;
-      host.instanceId = health.instanceId;
       host.retryMs = FIRST_RETRY_MS;
 
-      if (restarted) return restartedHost(host);
-
-      if (health.version !== "unknown" && !VERSION.test(health.version)) {
-        host.status = "incompatible";
-        host.detail = `${host.alias} reports an invalid version.`;
-      } else if (
-        health.version === "unknown" ||
-        health.version !== input.version
-      ) {
+      if (health.version === "unknown" || health.version !== input.version) {
         host.status = "incompatible";
         host.detail = `${host.alias} runs Whiteboard ${health.version}; this Desktop runs ${input.version}. Install Whiteboard ${input.version} on ${host.alias}.`;
       } else {

@@ -125,8 +125,6 @@ export function ApiCanvas({
     const lensMemory: CursorMemory = {};
 
     const show = async (snapshot: Snapshot) => {
-      if (snapshot.reviewId !== content.reviewId)
-        throw new Error("The server answered with another review.");
       setTrashedAt(snapshot.trashedAt ?? null);
       const next = await loader.load(snapshot);
 

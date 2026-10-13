@@ -44,9 +44,9 @@ export function parseRemoteAttach(stdout: string): { attach: ReviewRemoteAttach 
 			return { error: typeof error?.message === "string" ? error.message : "remote attach failed." };
 		}
 		if (record.event !== "remote.attach") continue;
-		const port = loopbackPort(record.url);
+		const port = urlPort(record.url);
 		if (port === undefined || typeof record.token !== "string" || !record.token) {
-			return { error: "remote attach answered without a loopback URL and a token." };
+			return { error: "remote attach answered without a URL and a token." };
 		}
 		return {
 			attach: {
@@ -60,12 +60,10 @@ export function parseRemoteAttach(stdout: string): { attach: ReviewRemoteAttach 
 	return { error: "remote attach printed nothing readable between its sentinels." };
 }
 
-function loopbackPort(url: unknown): number | undefined {
+function urlPort(url: unknown): number | undefined {
 	if (typeof url !== "string") return undefined;
 	try {
-		const parsed = new URL(url);
-		if (parsed.protocol !== "http:" || !["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname)) return undefined;
-		const port = Number(parsed.port);
+		const port = Number(new URL(url).port);
 		return Number.isInteger(port) && port > 0 && port < 65536 ? port : undefined;
 	} catch {
 		return undefined;

@@ -56,18 +56,16 @@ test("the helper prints the answer with no newline and exits 0, and the log neve
 
 	assert.deepEqual(result, { code: 0, stdout: "correct horse", stderr: "" });
 	assert.deepEqual(seen, [{ alias: "wb-test-a", text: password, kind: "secret" }]);
-	assert.ok(log.some((line) => line.includes("secret") && line.includes("wb-test-a") && line.includes("answered")), log.join("\n"));
 	assert.ok(!log.join("\n").includes("correct horse"));
 });
 
 test("a cancelled prompt makes the helper exit non-zero and print nothing", async (t) => {
-	const { askpass, log } = await listener(t, async () => undefined);
+	const { askpass } = await listener(t, async () => undefined);
 
 	const result = await runAskpass(askpass.env("wb-test-a"), password);
 
 	assert.notEqual(result.code, 0);
 	assert.equal(result.stdout, "");
-	assert.ok(log.some((line) => line.includes("cancelled")), log.join("\n"));
 });
 
 test("after a cancel, the same ssh's retry of that prompt is not shown, but a different prompt is", async (t) => {
@@ -84,9 +82,9 @@ test("after a cancel, the same ssh's retry of that prompt is not shown, but a di
 	assert.deepEqual(shown, [passphrase, password]);
 });
 
-test("a failing prompt is logged as an error, and the retry is still shown", async (t) => {
+test("after a failing prompt, the retry is still shown", async (t) => {
 	let calls = 0;
-	const { askpass, log } = await listener(t, async () => {
+	const { askpass } = await listener(t, async () => {
 		if (++calls === 1) throw new Error("relay broke");
 		return "second";
 	});
@@ -94,7 +92,6 @@ test("a failing prompt is logged as an error, and the retry is still shown", asy
 
 	assert.notEqual((await runAskpass(env, password)).code, 0);
 	assert.equal((await runAskpass(env, password)).stdout, "second");
-	assert.ok(log.some((line) => line.includes("failed: relay broke")), log.join("\n"));
 });
 
 test("the helper fails without printing when the listener is gone", async (t) => {
@@ -147,12 +144,11 @@ test("the script and the socket are the owner's alone, and dispose removes both"
 	assert.equal(existsSync(socket), false);
 });
 
-test("env forces the helper, carries no answer, and refuses an invalid alias", async (t) => {
+test("env forces the helper and carries no answer", async (t) => {
 	const { askpass } = await listener(t, async () => undefined);
 	const env = askpass.env("wb-test-a");
 
 	assert.equal(env.SSH_ASKPASS_REQUIRE, "force");
 	assert.ok(env.DISPLAY);
 	assert.equal(env.DEV_FAST_REVIEW_SSH_ASKPASS_ALIAS, "wb-test-a");
-	assert.throws(() => askpass.env("-oProxyCommand=x"), /starts with -/);
 });

@@ -14,15 +14,14 @@ import {
 	reviewSshInstancePrefix,
 	reviewSshSession,
 	sshCloseArgs,
-	validateSshAlias,
 } from "./reviewSshCommand.js";
+import { validateSshAlias } from "../../common/reviewSshAlias.js";
 
-const SEND_INTERVAL_MS = 1_000;
 
 export interface ReviewRemoteHostsOptions {
 	readonly spawn: SpawnSsh;
 	readonly controlDirectory: string;
-	readonly instance?: string;
+	readonly instance: string;
 	environment(): Promise<NodeJS.ProcessEnv>;
 	createAskpass(input: {
 		directory: string;
@@ -56,8 +55,6 @@ export class ReviewRemoteHosts {
 	private readonly refused = new Map<string, ReviewGatewayHost>();
 	private order: string[] = [];
 	private prepared: Promise<ReviewSshAskpass> | undefined;
-	private cancelSend: (() => void) | undefined;
-	private lastSent = -Infinity;
 	private sentAny = false;
 	private disposed = false;
 	private disposing: Promise<void> | undefined;
@@ -113,7 +110,6 @@ export class ReviewRemoteHosts {
 	dispose(): Promise<void> {
 		return (this.disposing ??= (async () => {
 			this.disposed = true;
-			this.cancelSend?.();
 			const hosts = [...this.hosts.values(), ...this.closing.keys()];
 			this.hosts.clear();
 			await Promise.all(hosts.map((host) => host.dispose()));
@@ -152,7 +148,6 @@ export class ReviewRemoteHosts {
 	}
 
 	private async sweepOrphans(): Promise<void> {
-		if (this.options.instance === undefined) return;
 		const prefix = reviewSshInstancePrefix(this.options.instance);
 		try {
 			const env = await this.options.environment();
@@ -187,13 +182,8 @@ export class ReviewRemoteHosts {
 	}
 
 	private publish(): void {
-		if (this.disposed || this.cancelSend || (!this.sentAny && !this.order.length)) return;
-		const wait = Math.max(0, this.lastSent + SEND_INTERVAL_MS - this.clock.now());
-		this.cancelSend = this.clock.schedule(wait, () => {
-			this.cancelSend = undefined;
-			this.lastSent = this.clock.now();
-			this.sentAny = true;
-			this.options.send(this.order.map((alias) => this.refused.get(alias) ?? this.hosts.get(alias)!.state));
-		});
+		if (this.disposed || (!this.sentAny && !this.order.length)) return;
+		this.sentAny = true;
+		this.options.send(this.order.map((alias) => this.refused.get(alias) ?? this.hosts.get(alias)!.state));
 	}
 }

@@ -4,7 +4,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { EventEmitter } from "node:events";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { PassThrough } from "node:stream";
+import type { TestContext } from "node:test";
 import type { ReviewRemoteClock, SpawnSsh, SshChildProcess } from "../reviewRemoteHost.js";
 
 class FakeChild extends EventEmitter {
@@ -12,7 +15,6 @@ class FakeChild extends EventEmitter {
 	readonly pid = FakeChild.nextPid++;
 	exitCode: number | null = null;
 	signalCode: NodeJS.Signals | null = null;
-	exitedAt: number | undefined;
 	readonly stdin = new PassThrough();
 	readonly stdout = new PassThrough();
 	readonly stderr = new PassThrough();
@@ -36,7 +38,6 @@ class FakeChild extends EventEmitter {
 		setImmediate(() => {
 			this.exitCode = code;
 			this.signalCode = signal;
-			this.exitedAt = Date.now();
 			this.emit("exit", code, signal);
 			this.emit("close", code, signal);
 		});
@@ -66,7 +67,8 @@ export interface FakeCall {
 	readonly kind: "master" | "check" | "exec" | "forward" | "cancel" | "exit";
 	readonly args: readonly string[];
 	readonly at: number;
-	readonly wall: number;
+	readonly masterAlive: boolean;
+	closed?: boolean;
 }
 
 export const attachOutput = (port: number, token = "remote-token") =>
@@ -113,8 +115,10 @@ export function fakeSsh(remotes: Record<string, FakeRemote>, clock?: { now(): nu
 		const remote = remotes[alias] ?? {};
 		const operation = args.includes("-O") ? args[args.indexOf("-O") + 1] : undefined;
 		const kind: FakeCall["kind"] = args.includes("-M") ? "master" : args.at(-1) === "-s" ? "exec" : (operation as FakeCall["kind"]);
-		calls.push({ alias, kind, args, at: clock?.now() ?? Date.now(), wall: Date.now() });
 		const master = masters.get(alias);
+		const entry: FakeCall = { alias, kind, args, at: clock?.now() ?? Date.now(), masterAlive: master?.alive ?? false };
+		calls.push(entry);
+		child.once("close", () => (entry.closed = true));
 		setImmediate(() => {
 			if (kind === "master") {
 				masters.set(alias, child);
@@ -159,6 +163,16 @@ export function fakeSsh(remotes: Record<string, FakeRemote>, clock?: { now(): nu
 		alive: () => [...masters.values()].filter((m) => m.alive).length,
 	};
 }
+
+export async function healthServer(t: TestContext, servers?: Server[]): Promise<number> {
+	const server: Server = createServer((_request, response) => response.end('{"ok":true}'));
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	t.after(() => new Promise((resolve) => server.close(() => resolve(undefined))));
+	servers?.push(server);
+	return (server.address() as AddressInfo).port;
+}
+
+export const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 export async function until(condition: () => boolean, ms = 3000) {
 	const end = Date.now() + ms;

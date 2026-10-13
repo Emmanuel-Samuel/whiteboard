@@ -62,9 +62,9 @@ const FIRST_DELAY_MS = 1_000;
 const MAX_DELAY_MS = 60_000;
 const OUTPUT_LIMIT = 64 * 1024;
 
-export function reconnectDelay(failures: number, random: () => number = Math.random): number {
+function reconnectDelay(failures: number): number {
 	const base = Math.min(FIRST_DELAY_MS * 2 ** failures, MAX_DELAY_MS);
-	return Math.round(Math.min(MAX_DELAY_MS, Math.max(FIRST_DELAY_MS, base * (0.75 + 0.5 * random()))));
+	return Math.round(Math.min(MAX_DELAY_MS, Math.max(FIRST_DELAY_MS, base * (0.75 + 0.5 * Math.random()))));
 }
 
 export function classifySshFailure(stderr: string, promptCancelled: boolean): "auth-failed" | "unreachable" {
@@ -180,7 +180,6 @@ export interface ReviewRemoteHostOptions {
 	log(message: string): void;
 	readonly clock?: ReviewRemoteClock;
 	readonly timeouts?: Partial<typeof REVIEW_REMOTE_TIMEOUTS>;
-	readonly random?: () => number;
 }
 
 export class ReviewRemoteHost {
@@ -244,7 +243,7 @@ export class ReviewRemoteHost {
 		if (this.disposed || this.reattaching || this.cancelTimer || !this.master || this.connectedAt === undefined) return Promise.resolve();
 		const attempt = this.nextAttempt();
 		if (attempt === 0) return this.attachAgain();
-		const delay = reconnectDelay(attempt - 1, this.options.random);
+		const delay = reconnectDelay(attempt - 1);
 		this.options.log(`${this.alias}: its server restarted again; attaching again in ${Math.round(delay / 1000)} s.`);
 		this.cancelTimer = this.clock.schedule(delay, () => {
 			this.cancelTimer = undefined;
@@ -443,7 +442,7 @@ export class ReviewRemoteHost {
 		this.dropMaster();
 		this.set({ alias: this.alias, problem });
 		if (problem.state !== "unreachable" || this.disposed) return;
-		const delay = reconnectDelay(attempt, this.options.random);
+		const delay = reconnectDelay(attempt);
 		this.cancelTimer = this.clock.schedule(delay, () => {
 			this.cancelTimer = undefined;
 			void this.connect();

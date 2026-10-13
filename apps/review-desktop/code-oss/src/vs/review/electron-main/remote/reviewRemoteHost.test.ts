@@ -6,24 +6,15 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import type { ReviewGatewayHost } from "../../common/reviewProtocol.js";
-import { attachOutput, fakeClock, fakeSsh, until, type FakeRemote } from "./test/fakeSsh.js";
+import { attachOutput, fakeClock, fakeSsh, flush, healthServer, until, type FakeRemote } from "./test/fakeSsh.js";
 import { classifySshFailure, ReviewRemoteHost } from "./reviewRemoteHost.js";
 import { reviewSshSession } from "./reviewSshCommand.js";
-
-async function healthServer(t: test.TestContext, servers?: Server[]): Promise<number> {
-	const server: Server = createServer((_request, response) => response.end('{"ok":true}'));
-	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-	t.after(() => new Promise((resolve) => server.close(() => resolve(undefined))));
-	servers?.push(server);
-	return (server.address() as AddressInfo).port;
-}
 
 function hostFor(
 	t: test.TestContext,
@@ -38,7 +29,7 @@ function hostFor(
 	const ssh = fakeSsh({ [alias]: remote }, clock);
 	const reports: ReviewGatewayHost[] = [];
 	const host = new ReviewRemoteHost({
-		session: reviewSshSession(alias, controlDirectory),
+		session: reviewSshSession(alias, controlDirectory, "test"),
 		spawn: ssh.spawn,
 		environment: async () => ({ PATH: "/usr/bin" }),
 		desktopVersion: async () => "0.1.6",
@@ -139,7 +130,7 @@ test("a master killed by a signal leaves its socket, and the next master does no
 	const dir = await mkdtemp(join(tmpdir(), "wb-ssh-"));
 	t.after(() => rm(dir, { recursive: true, force: true }));
 	const { host, ssh, clock, last } = hostFor(t, {}, port, "wb-test-a", dir);
-	const socket = reviewSshSession("wb-test-a", dir).controlPath;
+	const socket = reviewSshSession("wb-test-a", dir, "test").controlPath;
 
 	host.start();
 	await until(() => last()?.endpoint !== undefined);
@@ -307,11 +298,10 @@ test("a retry starts the new master only after the old one has exited", async (t
 
 	host.start();
 	await until(() => last()?.endpoint !== undefined);
-	const first = ssh.master("wb-test-a")!;
 	host.retry();
 	await until(() => ssh.of("wb-test-a", "master").length === 2);
 
-	assert.ok(first.exitedAt !== undefined && ssh.of("wb-test-a", "master")[1].wall >= first.exitedAt);
+	assert.equal(ssh.of("wb-test-a", "master")[1].masterAlive, false);
 });
 
 test("the sentinels are found after a banner longer than the output bound", async (t) => {
@@ -356,7 +346,8 @@ test("a dispose while -O check is pending starts no attach, even if the check th
 	await until(() => ssh.of("wb-test-a", "check").length === 2);
 	await host.dispose();
 	checked.resolve();
-	await new Promise((resolve) => setTimeout(resolve, 20));
+	await until(() => ssh.of("wb-test-a", "check")[1].closed === true);
+	await flush();
 
 	assert.deepEqual(
 		ssh.calls.map((c) => c.kind),
@@ -367,14 +358,17 @@ test("a dispose while -O check is pending starts no attach, even if the check th
 test("a dispose while the forward's port is chosen starts no forward", async (t) => {
 	const port = await healthServer(t);
 	const chosen = Promise.withResolvers<number>();
-	const { host, ssh } = hostFor(t, {}, () => chosen.promise);
+	const asked = Promise.withResolvers<void>();
+	const { host, ssh } = hostFor(t, {}, () => {
+		asked.resolve();
+		return chosen.promise;
+	});
 
 	host.start();
-	await until(() => ssh.of("wb-test-a", "exec").length === 1);
-	await new Promise((resolve) => setTimeout(resolve, 20));
+	await asked.promise;
 	await host.dispose();
 	chosen.resolve(port);
-	await new Promise((resolve) => setTimeout(resolve, 20));
+	await flush();
 
 	assert.equal(ssh.of("wb-test-a", "forward").length, 0);
 });

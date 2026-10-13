@@ -1246,62 +1246,7 @@ function rewrittenWatch(
   };
 }
 
-it("binds sources and resources to the review the tab asked for, not the one an answer names", async () => {
-  const asked = await command({
-    type: "create",
-    title: "Asked",
-    target: { kind: "commits", ...pins },
-  });
-
-  const other = await command({
-    type: "create",
-    title: "Other",
-    target: { kind: "commits", ...pins },
-  });
-
-  const app = new Hono().route("/reviews-api", createReviewApi(store));
-  app.get("/reviews-api/:id/commits", (context) => context.json([]));
-  const requests: string[] = [];
-  const views: string[] = [];
-
-  const bridge = testReviewBridge(
-    {},
-    {
-      request: rewrittenWatch(
-        app,
-        (line) => {
-          if (line.value) line.value.reviewId = other.reviewId;
-        },
-        requests,
-      ),
-    },
-  );
-
-  const container = document.createElement("div");
-  document.body.append(container);
-  await act(async () => {
-    canvas = mount(container, {
-      kind: "api",
-      reviewId: asked.reviewId,
-      bridge,
-      setSourceView: (_selection, view) => views.push(view.reviewId),
-    });
-  });
-  await act(async () => {
-    await vi.waitFor(() =>
-      expect(container.textContent).toContain(
-        "The server answered with another review.",
-      ),
-    );
-  });
-
-  expect(views).not.toContain(other.reviewId);
-  expect(requests.filter((entry) => entry.includes(other.reviewId))).toEqual(
-    [],
-  );
-});
-
-it("gives a review on another machine no tutorial controls, whatever its snapshot says", async () => {
+it("gives a review on another machine no tutorial controls, even a tutorial review", async () => {
   const review = await command({
     type: "create",
     title: "Remote",

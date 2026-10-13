@@ -5,24 +5,15 @@
 
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import type { ReviewGatewayHost } from "../../common/reviewProtocol.js";
-import { fakeClock, fakeSsh, until, type FakeRemote } from "./test/fakeSsh.js";
+import { fakeClock, fakeSsh, flush, healthServer, until, type FakeRemote } from "./test/fakeSsh.js";
 import { ReviewRemoteHosts } from "./reviewRemoteHosts.js";
 import type { SshPromptRequest } from "./reviewSshAskpass.js";
 import { reviewSshInstancePrefix } from "./reviewSshCommand.js";
-
-async function healthServer(t: test.TestContext): Promise<number> {
-	const server: Server = createServer((_request, response) => response.end('{"ok":true}'));
-	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-	t.after(() => new Promise((resolve) => server.close(resolve)));
-	return (server.address() as AddressInfo).port;
-}
 
 async function managerFor(t: test.TestContext, remotes: Record<string, FakeRemote>, answer?: string, before?: (directory: string) => Promise<void>) {
 	const port = await healthServer(t);
@@ -76,14 +67,13 @@ test("a host whose ssh never returns does not hold another, and update returns a
 	assert.ok(ssh.master("wb-test-slow")?.alive);
 });
 
-test("hosts are sent in the setting's order, at most once a second", async (t) => {
+test("hosts are sent in the setting's order", async (t) => {
 	const { manager, sent, sentUntil } = await managerFor(t, { "wb-test-a": {}, "wb-test-b": {} });
 
 	manager.update(true, ["wb-test-b", "wb-test-a"]);
 	await sentUntil((hosts) => hosts.every((h) => h.endpoint));
 
 	assert.deepEqual(sent.at(-1)!.hosts.map((h) => h.alias), ["wb-test-b", "wb-test-a"]);
-	for (let i = 1; i < sent.length; i++) assert.ok(sent[i].at - sent[i - 1].at >= 1000);
 });
 
 test("removing a host from the setting closes its connection", async (t) => {
@@ -104,12 +94,11 @@ test("an alias added again while its old host closes starts only after the old m
 
 	manager.update(true, ["wb-test-a"]);
 	await sentUntil((hosts) => byAlias(hosts, "wb-test-a")?.endpoint !== undefined);
-	const first = ssh.master("wb-test-a")!;
 	manager.update(true, []);
 	manager.update(true, ["wb-test-a"]);
 	await until(() => ssh.of("wb-test-a", "master").length === 2);
 
-	assert.ok(first.exitedAt !== undefined && ssh.of("wb-test-a", "master")[1].wall >= first.exitedAt);
+	assert.equal(ssh.of("wb-test-a", "master")[1].masterAlive, false);
 });
 
 test("removing a host whose master is still connecting ends that ssh at once", async (t) => {
@@ -127,7 +116,7 @@ test("with the experimental setting off, nothing connects and no hosts are sent"
 	const { manager, ssh, sent, clock } = await managerFor(t, { "wb-test-a": {} });
 
 	manager.update(false, ["wb-test-a"]);
-	await new Promise((resolve) => setTimeout(resolve, 20));
+	await flush();
 	while (clock.next());
 
 	assert.equal(ssh.calls.length, 0);
@@ -144,7 +133,7 @@ test("an invalid alias is unreachable with the reason and never reaches ssh", as
 });
 
 test("a prompt cancelled through askpass is auth-failed, until a retry", async (t) => {
-	const { manager, ssh, sent, sentUntil, prompt } = await managerFor(t, { "wb-test-c": { master: "hang" } }, undefined);
+	const { manager, ssh, clock, sent, sentUntil, prompt } = await managerFor(t, { "wb-test-c": { master: "hang" } }, undefined);
 
 	manager.update(true, ["wb-test-c"]);
 	await until(() => ssh.master("wb-test-c") !== undefined);
@@ -153,7 +142,8 @@ test("a prompt cancelled through askpass is auth-failed, until a retry", async (
 	await sentUntil((hosts) => hosts[0]?.problem?.state === "auth-failed");
 	const count = sent.length;
 
-	await new Promise((resolve) => setTimeout(resolve, 20));
+	await flush();
+	assert.equal(clock.pending, 0);
 	assert.equal(ssh.of("wb-test-c", "master").length, 1);
 	assert.equal(sent.length, count);
 

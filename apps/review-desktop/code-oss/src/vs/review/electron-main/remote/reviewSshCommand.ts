@@ -10,8 +10,6 @@ import { join } from "node:path";
 
 import { validateSshAlias } from "../../common/reviewSshAlias.js";
 
-export { validateSshAlias };
-
 /**
  * Development only: an ssh_config file every `ssh` call and the alias list
  * use, because OpenSSH finds `~/.ssh` from the account, not from `HOME`.
@@ -40,15 +38,11 @@ export function reviewSshInstancePrefix(instance: string): string {
 	return `${sha(instance).slice(0, 6)}-`;
 }
 
-export function reviewSshSession(alias: string, controlDirectory = reviewSshControlDirectory(), instance?: string): ReviewSshSession {
-	checkAlias(alias);
-	const name = instance === undefined ? sha(alias).slice(0, 12) : `${reviewSshInstancePrefix(instance)}${sha(`${instance}\n${alias}`).slice(0, 12)}`;
-	return { alias, controlPath: join(controlDirectory, name) };
-}
-
-function checkAlias(alias: string): void {
+export function reviewSshSession(alias: string, controlDirectory: string, instance: string): ReviewSshSession {
 	const valid = validateSshAlias(alias);
 	if (!valid.ok) throw new Error(`SSH alias ${JSON.stringify(alias)} ${valid.reason}.`);
+	const name = `${reviewSshInstancePrefix(instance)}${sha(`${instance}\n${alias}`).slice(0, 12)}`;
+	return { alias, controlPath: join(controlDirectory, name) };
 }
 
 export async function prepareSshControlDirectory(dir: string): Promise<void> {
@@ -71,7 +65,6 @@ export function reviewSshConfigPath(env: NodeJS.ProcessEnv = process.env, home =
 }
 
 function base(session: ReviewSshSession, env: NodeJS.ProcessEnv): string[] {
-	checkAlias(session.alias);
 	const config = developmentConfig(env);
 	return [...(config ? ["-F", config] : []), "-S", session.controlPath];
 }
@@ -94,9 +87,6 @@ export function sshExecArgs(session: ReviewSshSession, env: NodeJS.ProcessEnv = 
 }
 
 function localForward(localPort: number, remotePort: number): string {
-	for (const port of [localPort, remotePort]) {
-		if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`Invalid port ${port}.`);
-	}
 	return `127.0.0.1:${localPort}:127.0.0.1:${remotePort}`;
 }
 

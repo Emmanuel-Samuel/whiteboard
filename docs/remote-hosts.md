@@ -77,7 +77,7 @@ never stored.
 | `auth-failed` | The login was refused, a prompt was cancelled, or the host key did not match. | Fix the login, then click **Retry**. Whiteboard does not retry this by itself. |
 | `not-installed` | `whiteboard` was not found on the remote. | Install it with the command that Settings shows, then click **Retry**. Whiteboard does not retry this by itself. |
 | `incompatible` | The remote runs another version of Whiteboard. | Run the install command that Settings shows, then `whiteboard server stop` on the remote. Desktop starts the new server within about 10 seconds. |
-| `duplicate` | Two hosts report the same server id. This happens when a review store was copied to a second machine. | If both aliases are one machine, remove one of them. If they are two machines, remove the copy's host, run `whiteboard server stop` and then `whiteboard server reset-id` on the copy, and add it again. |
+| `duplicate` | Two or more hosts report the same server id, so Whiteboard uses none of them. This happens when one machine is added under two aliases, or a review store was copied to a second machine. | If the aliases are one machine, remove all but one. If they are two machines, remove the copy's host, run `whiteboard server stop` and then `whiteboard server reset-id` on the copy, and add it again. |
 
 While a host is not `online`, its reviews stay in Home, drawn as unavailable.
 Opening one says why.

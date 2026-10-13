@@ -14,7 +14,6 @@ import {
 	sshPromptKind,
 	type SshPromptKind,
 } from "../../common/reviewSshPrompt.js";
-import { validateSshAlias } from "./reviewSshCommand.js";
 
 export interface SshPromptRequest {
 	readonly alias: string;
@@ -27,8 +26,6 @@ export interface ReviewSshAskpass {
 	env(alias: string): Record<string, string>;
 	dispose(): void;
 }
-
-const MAX_REQUEST_BYTES = 64 * 1024;
 
 function defaultHelper(): string[] {
 	return [process.execPath, FileAccess.asFileUri("vs/review/node/reviewSshAskpassMain.js").fsPath];
@@ -103,10 +100,7 @@ export async function createSshAskpass(input: {
 		const onData = (chunk: string) => {
 			buffer += chunk;
 			const end = buffer.indexOf("\n");
-			if (end < 0) {
-				if (buffer.length > MAX_REQUEST_BYTES) socket.destroy();
-				return;
-			}
+			if (end < 0) return;
 			socket.off("data", onData);
 			const request = parseRequest(buffer.slice(0, end));
 			if (!request) return void socket.destroy();
@@ -129,8 +123,6 @@ export async function createSshAskpass(input: {
 
 	return {
 		env(alias) {
-			const valid = validateSshAlias(alias);
-			if (!valid.ok) throw new Error(`SSH alias ${JSON.stringify(alias)} ${valid.reason}.`);
 			return {
 				SSH_ASKPASS: scriptPath,
 				SSH_ASKPASS_REQUIRE: "force",
@@ -151,10 +143,7 @@ export async function createSshAskpass(input: {
 
 function parseRequest(line: string): { alias: string; text: string; pid: number } | undefined {
 	try {
-		const { alias, text, pid } = JSON.parse(line) as Record<string, unknown>;
-		if (typeof alias !== "string" || !validateSshAlias(alias).ok) return undefined;
-		if (typeof text !== "string" || !Number.isInteger(pid) || (pid as number) < 2) return undefined;
-		return { alias, text, pid: pid as number };
+		return JSON.parse(line);
 	} catch {
 		return undefined;
 	}

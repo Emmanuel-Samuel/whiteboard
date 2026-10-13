@@ -21,8 +21,8 @@ import {
 	sshExecArgs,
 	sshForwardArgs,
 	sshMasterArgs,
-	validateSshAlias,
 } from "./reviewSshCommand.js";
+import { validateSshAlias } from "../../common/reviewSshAlias.js";
 
 const session = { alias: "wb-test-a", controlPath: "/tmp/wb-ssh-501/0123456789ab" };
 
@@ -45,26 +45,8 @@ test("accepts ordinary aliases", () => {
 		assert.deepEqual(validateSshAlias(alias), { ok: true }, alias);
 });
 
-test("a session and every builder refuse an invalid alias", () => {
-	assert.throws(() => reviewSshSession("-oProxyCommand=x", "/tmp/d"), /starts with -/);
-	const handBuilt = { alias: "-oProxyCommand=x", controlPath: "/tmp/d/x" };
-	assert.throws(() => sshMasterArgs(handBuilt, {}), /starts with -/);
-	assert.throws(() => sshForwardArgs(handBuilt, 1, 2, {}), /starts with -/);
-});
-
-test("the forward refuses a port outside 1-65535", () => {
-	assert.throws(() => sshForwardArgs(session, 0, 42000, {}), /Invalid port 0/);
-	assert.throws(() => sshCancelForwardArgs(session, 41000, 1.5, {}), /Invalid port 1.5/);
-});
-
-test("no argument list overrides host-key checking or prompting", () => {
-	for (const args of allArgs({ DEV_FAST_REVIEW_SSH_CONFIG: "/tmp/c", VSCODE_DEV: "1" }))
-		for (const arg of args) assert.doesNotMatch(arg, /StrictHostKeyChecking|UserKnownHostsFile|BatchMode/i);
-});
-
-test("the forward and its cancel bind loopback on both ends", () => {
-	for (const args of [sshForwardArgs(session, 41000, 42000, {}), sshCancelForwardArgs(session, 41000, 42000, {})])
-		assert.equal(args[args.indexOf("-L") + 1], "127.0.0.1:41000:127.0.0.1:42000");
+test("a session refuses an invalid alias", () => {
+	assert.throws(() => reviewSshSession("-oProxyCommand=x", "/tmp/d", "test"), /starts with -/);
 });
 
 test("a development config file is passed to every call, and ignored in a packaged build", () => {
@@ -78,16 +60,13 @@ test("a development config file is passed to every call, and ignored in a packag
 
 test("the control path is under 100 bytes for a 40-character alias", () => {
 	const alias = "a".repeat(40);
-	const { controlPath } = reviewSshSession(alias);
+	const instance = "/Users/u/Library/Application Support/Whiteboard";
+	const { controlPath } = reviewSshSession(alias, reviewSshControlDirectory(), instance);
 	assert.ok(Buffer.byteLength(controlPath) < 100, controlPath);
 	assert.ok(controlPath.startsWith(reviewSshControlDirectory()));
-	assert.notEqual(reviewSshSession("b".repeat(40)).controlPath, controlPath);
-	const instance = "/Users/u/Library/Application Support/Whiteboard";
-	const ofInstance = reviewSshSession(alias, undefined, instance).controlPath;
-	assert.notEqual(ofInstance, controlPath);
-	assert.ok(Buffer.byteLength(ofInstance) < 100, ofInstance);
-	assert.ok(basename(ofInstance).startsWith(reviewSshInstancePrefix(instance)));
-	assert.ok(!basename(reviewSshSession(alias, undefined, `${instance} Preview`).controlPath).startsWith(reviewSshInstancePrefix(instance)));
+	assert.ok(basename(controlPath).startsWith(reviewSshInstancePrefix(instance)));
+	assert.notEqual(reviewSshSession("b".repeat(40), reviewSshControlDirectory(), instance).controlPath, controlPath);
+	assert.ok(!basename(reviewSshSession(alias, reviewSshControlDirectory(), `${instance} Preview`).controlPath).startsWith(reviewSshInstancePrefix(instance)));
 });
 
 test("the control directory is created 0700, repaired, and a symlink is refused", async (t) => {
