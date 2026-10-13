@@ -570,12 +570,13 @@
 
 /* The header's link to the file on GitHub. */
 /* The codicon stylesheet makes it a block, so the glyph is centred by its line. */
-.dv-open.codicon {
+a.dv-open.codicon {
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  justify-content: center;
   width: 36px;
   height: 36px;
-  line-height: 36px;
-  text-align: center;
   border-radius: 6px;
   color: var(--vscode-descriptionForeground);
   text-decoration: none;
