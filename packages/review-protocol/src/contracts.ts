@@ -994,8 +994,7 @@ export interface ReviewGatewayHostState {
   declined?: true;
 }
 
-/** `POST /:id/navigator` for a remote caller: host paths, and the server they
- * are on. `emptySide`: the diff side has no file; open one locally. */
+/** `emptySide`: the diff side has no file; open one locally. */
 export interface ReviewRemoteNavigatorAnswer {
   workspacePath: string;
   filePath?: string;

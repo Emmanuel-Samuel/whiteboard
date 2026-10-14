@@ -139,7 +139,7 @@ export async function setupServerServices(connectionToken: ServerConnectionToken
 		// Whiteboard: the client always opens this channel; telemetry is cut.
 		socketServer.registerChannel('telemetry', new NullTelemetryChannel());
 
-		// Whiteboard: extension management is cut; Source windows list no extensions.
+		// Whiteboard: extension management is cut.
 		socketServer.registerChannel('extensions', new NoExtensionsChannel());
 		socketServer.registerChannel('extensionGalleryManifest', new NoExtensionsChannel());
 

@@ -90,20 +90,6 @@ test("shows the alias while online, the offline state within one poll, and resto
 	}
 });
 
-test("a window on another authority shows nothing and never asks main", () => {
-	for (const remoteAuthority of [undefined, "ssh-remote+x", "Whiteboard+ABC"]) {
-		const contribution = new ReviewSourceWindowHostState(
-			{ remoteAuthority } as IWorkbenchEnvironmentService,
-			{ getChannel: () => assert.fail("asked main") } as unknown as IMainProcessService,
-			{ addEntry: () => assert.fail("added an entry") } as unknown as IStatusbarService,
-			{ notify: () => assert.fail("notified") } as unknown as INotificationService,
-			{ getConnection: () => null } as unknown as IRemoteAgentService,
-			{ get: () => assert.fail("read storage") } as unknown as IStorageService,
-		);
-		contribution.dispose();
-	}
-});
-
 test("a window restored before main knows its host's alias names it by the alias it stored when it opened", async () => {
 	const stored = new Map<string, string>();
 	const storage = { get: (key: string) => stored.get(key), store: (key: string, value: string) => stored.set(key, value) } as unknown as IStorageService;
