@@ -12,6 +12,10 @@ on:
       channel:
         required: true
         type: string
+      whiteboard_remote:
+        description: The remote job's pin (stamp-remote-artifacts.mjs).
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -154,6 +158,11 @@ jobs:
           node apps/review-desktop/scripts/stamp-release-channel.mjs \
             --version "$RELEASE_VERSION" \
             --quality "${{ inputs.channel }}"
+
+      - name: Pin the remote tarballs
+        env:
+          WHITEBOARD_REMOTE: ${{ inputs.whiteboard_remote }}
+        run: node apps/review-desktop/scripts/stamp-remote-artifacts.mjs --pinned "$WHITEBOARD_REMOTE"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6

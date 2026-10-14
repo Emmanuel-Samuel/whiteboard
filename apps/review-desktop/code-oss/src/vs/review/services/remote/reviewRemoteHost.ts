@@ -268,7 +268,7 @@ export class ReviewRemoteSession extends Disposable implements IReviewRemoteSess
 		this.check();
 
 		const files = this._register(new DiskFileSystemProviderClient(management.client.getChannel(REMOTE_FILE_SYSTEM_CHANNEL_NAME), { pathCaseSensitive: true }));
-		this._register(this.router.add(authority, files));
+		this._register(this.router.add(authority, files, [environment.globalStorageHome, environment.workspaceStorageHome, environment.logsPath]));
 
 		const scope = this._register(this.instantiationService.createChild(this.instantiationService.invokeFunction((window) => reviewRemoteScope({
 			authority,

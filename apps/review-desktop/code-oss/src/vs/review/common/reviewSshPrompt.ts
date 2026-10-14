@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See LICENSE in the repository root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-export type SshPromptKind = "secret" | "confirm" | "text";
+export type SshPromptKind = "secret" | "confirm" | "text" | "install";
 
 export type ReviewSshPromptEvent =
 	| { readonly id: number; readonly alias: string; readonly text: string; readonly kind: SshPromptKind }
@@ -11,6 +11,9 @@ export type ReviewSshPromptEvent =
 
 export const REVIEW_SSH_PROMPT_EVENT = "onSshPrompt";
 export const REVIEW_SSH_ANSWER_CALL = "answerSshPrompt";
+
+export const REVIEW_REMOTE_INSTALL_YES = "install";
+export const REVIEW_REMOTE_INSTALL_NO = "decline";
 
 export const REVIEW_SSH_ASKPASS_SOCKET_ENV = "DEV_FAST_REVIEW_SSH_ASKPASS_SOCKET";
 export const REVIEW_SSH_ASKPASS_ALIAS_ENV = "DEV_FAST_REVIEW_SSH_ASKPASS_ALIAS";

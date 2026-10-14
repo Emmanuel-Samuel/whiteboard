@@ -12,7 +12,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { stageReviewDocs } from "../apps/review-desktop/scripts/stage-review-runtime.mjs";
-import { stageVscodeServer } from "../apps/review-desktop/scripts/stage-vscode-server.mjs";
 import { distTag } from "./review-cli-release.mjs";
 
 export const MAX_TARBALL_BYTES = 60 * 1024 * 1024;
@@ -23,7 +22,6 @@ export async function packReviewCli(
   {
     packageDirectory = "packages/review",
     stdio = "inherit",
-    vscodeServer = {},
     maxBytes = MAX_TARBALL_BYTES,
   } = {},
 ) {
@@ -60,7 +58,6 @@ export async function packReviewCli(
     ]);
     const staged = path.join(scratch, "package");
     await stageReviewDocs(staged);
-    await stageVscodeServer(staged, { ...vscodeServer, commit });
 
     execFileSync(
       "npm",

@@ -101,14 +101,16 @@ jobs:
             exit 1
           fi
 
-  npm:
-    name: Publish npm package
+  remote:
+    name: Publish remote tarballs and npm package
     needs: version
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
       id-token: write
+    outputs:
+      whiteboard_remote: ${{ steps.remote.outputs.whiteboard_remote }}
     env:
       VERSION: ${{ needs.version.outputs.version }}
       COMMIT: ${{ needs.version.outputs.commit }}
@@ -175,11 +177,52 @@ jobs:
           key: ${{ runner.os }}-code-oss-deps-v3-${{ steps.code-oss-inputs.outputs.digest }}
           restore-keys: |
             ${{ runner.os }}-code-oss-deps-v3-
-      - name: Build the VS Code server
+      - name: Check for published remote tarballs
+        if: ${{ !inputs.dry_run }}
+        id: existing
+        run: |
+          mkdir -p remote-artifacts
+          FOUND=0
+          for t in linux-x64 linux-arm64; do
+            NAME="whiteboard-remote-${VERSION}-${t}.tar.xz.sha256"
+            STATUS=$(curl -sS --retry 3 --retry-all-errors -o "remote-artifacts/$NAME" -w '%{http_code}' "https://install.dev.fast/releases/${VERSION}/remote/$NAME")
+            case "$STATUS" in
+              200) FOUND=$((FOUND + 1)) ;;
+              404) rm -f "remote-artifacts/$NAME" ;;
+              *) echo "::error::${NAME} answered ${STATUS}" >&2; exit 1 ;;
+            esac
+          done
+          if [ "$FOUND" = 1 ]; then
+            echo "::error::Only one remote tarball for ${VERSION} is published; fix releases/${VERSION}/remote/ on R2 by hand." >&2
+            exit 1
+          fi
+          echo "published=$([ "$FOUND" = 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Build the remote tarballs
+        if: ${{ steps.existing.outputs.published != 'true' }}
         run: |
           source apps/review-desktop/scripts/code-oss-dependencies.sh
           ensure_code_oss_dependencies "$PWD/apps/review-desktop" "$PWD/apps/review-desktop/code-oss"
-          BUILD_SOURCEVERSION="$COMMIT" node apps/review-desktop/scripts/build-remote-runtime.mjs
+          for t in linux-x64 linux-arm64; do
+            node apps/review-desktop/scripts/build-remote-tarball.mjs --target "$t" --out remote-artifacts --version "$VERSION" --commit "$COMMIT"
+          done
+      # Payloads before the pin: no Desktop build may pin a tarball R2 lacks.
+      - name: Upload the remote tarballs to R2
+        if: ${{ !inputs.dry_run && steps.existing.outputs.published != 'true' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: ${{ vars.R2_ENDPOINT_URL }}
+          AWS_REGION: auto
+          R2_BUCKET: ${{ vars.R2_RELEASE_BUCKET }}
+        run: |
+          PREFIX="s3://${R2_BUCKET}/releases/${VERSION}/remote/"
+          aws s3 cp remote-artifacts/ "$PREFIX" --recursive --exclude "*" --include "*.tar.xz" --content-type application/x-xz
+          aws s3 cp remote-artifacts/ "$PREFIX" --recursive --exclude "*" --include "*.sha256" --content-type text/plain
+      - name: Pin the remote tarballs
+        id: remote
+        run: |
+          PIN=$(node apps/review-desktop/scripts/stamp-remote-artifacts.mjs remote-artifacts "$VERSION" "https://install.dev.fast/releases/${VERSION}/remote")
+          echo "whiteboard_remote=$PIN" >> "$GITHUB_OUTPUT"
       - name: Build release tarball
         run: |
           jq -n --arg version "$VERSION" --arg commit "$COMMIT" '{$version, $commit}' > release-plan.json
@@ -210,17 +253,18 @@ jobs:
   # build signs with the production repository key rather than a CI key.
   linux:
     if: ${{ inputs.platforms == 'all' || inputs.platforms == 'linux' }}
-    needs: [version, npm]
+    needs: [version, remote]
     uses: ./.github/workflows/review-linux-build.yml
     with:
       commit: ${{ needs.version.outputs.commit }}
       version: ${{ needs.version.outputs.version }}
+      whiteboard_remote: ${{ needs.remote.outputs.whiteboard_remote }}
       release_signing: ${{ !inputs.dry_run }}
     secrets: inherit
 
   windows:
     if: ${{ inputs.platforms == 'all' || inputs.platforms == 'windows' }}
-    needs: [version, npm]
+    needs: [version, remote]
     permissions:
       contents: read
       id-token: write
@@ -228,11 +272,12 @@ jobs:
     with:
       commit: ${{ needs.version.outputs.commit }}
       version: ${{ needs.version.outputs.version }}
+      whiteboard_remote: ${{ needs.remote.outputs.whiteboard_remote }}
       sign: true
 
   macos:
     if: ${{ inputs.platforms == 'all' || inputs.platforms == 'macos' }}
-    needs: [version, npm]
+    needs: [version, remote]
     permissions:
       contents: read
       actions: read
@@ -240,6 +285,7 @@ jobs:
     with:
       commit: ${{ needs.version.outputs.commit }}
       version: ${{ needs.version.outputs.version }}
+      whiteboard_remote: ${{ needs.remote.outputs.whiteboard_remote }}
       channel: preview
     secrets: inherit
 

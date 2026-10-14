@@ -1,19 +1,16 @@
 /** Hosts in Docker containers: the image, `up`, `install`, and the sealed network. */
 import { createHash, randomBytes } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { stageVscodeServer } from "../../stage-vscode-server.mjs";
+import { buildDevRemoteTarball } from "../../build-remote-tarball.mjs";
+import { remoteDevInstall } from "../../remote-dev-install.mjs";
+
 import { addOnce, docker, exec, run, sleep } from "./exec.mjs";
 import { hostOf } from "./run-state.mjs";
 import { waitForSsh } from "./ssh.mjs";
 
 const imageDir = path.join(import.meta.dirname, "image");
-
-const packageDir = path.resolve(
-  import.meta.dirname,
-  "../../../../../packages/review",
-);
 
 const TOOLCHAIN_IMAGES = {
   rust: "rust:1.98-bookworm",
@@ -198,14 +195,6 @@ export async function up(runState, name, options) {
   );
 
   if (options.sealed) {
-    host.defaultRoute = await docker(
-      "exec",
-      container,
-      "ip",
-      "route",
-      "show",
-      "default",
-    );
     host.sealed = true;
     await runState.save();
     await seal(runState, host);
@@ -308,75 +297,36 @@ export function containerOf(runState, name) {
   return host;
 }
 
-export async function packStaged(tarball, { version, runtime } = {}) {
-  const scratch = await mkdtemp(`${path.dirname(tarball)}/pack-`);
+export async function packTarball(out, { version, arch = "x64" } = {}) {
+  const built = await buildDevRemoteTarball({
+    target: `linux-${arch}`,
+    version,
+    stdio: ["ignore", process.stderr, process.stderr],
+  });
 
-  try {
-    await run("pnpm", [
-      "--dir",
-      packageDir,
-      "pack",
-      "--pack-destination",
-      scratch,
-    ]);
+  await copyFile(built.file, out);
 
-    const [packed] = (await readdir(scratch)).filter((f) => f.endsWith(".tgz"));
-    await run("tar", ["-xzf", path.join(scratch, packed), "-C", scratch]);
-
-    const manifestPath = path.join(scratch, "package/package.json");
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-
-    if (version) {
-      manifest.version = version;
-      await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-    }
-
-    await stageVscodeServer(path.join(scratch, "package"), { runtime });
-    await run("tar", ["-czf", tarball, "-C", scratch, "package"], {
-      env: { ...process.env, COPYFILE_DISABLE: "1" },
-    });
-
-    return `${manifest.name}@${manifest.version}`;
-  } finally {
-    await rm(scratch, { recursive: true, force: true });
-  }
+  return { ...built, file: out };
 }
 
-export async function install(runState, name, { version, runtime } = {}) {
+/** Installs this checkout's tarball as a hand install would, with a `whiteboard` on the default PATH. */
+export async function install(runState, name, { version, commit } = {}) {
   const host = containerOf(runState, name);
-  const tarball = `${runState.dir}/staged-${randomBytes(3).toString("hex")}.tgz`;
 
-  try {
-    const packed = await packStaged(tarball, { version, runtime });
-
-    await docker("cp", tarball, `${host.container}:/tmp/wb-test-package.tgz`);
-
-    if (host.sealed)
-      await netAdmin(
-        runState,
-        host.image,
-        `container:${host.container}`,
-        `ip route add ${host.defaultRoute}`,
-      );
-
-    try {
-      await docker(
-        "exec",
-        host.container,
-        "npm",
-        "install",
-        "-g",
-        "--no-audit",
-        "--no-fund",
-        "/tmp/wb-test-package.tgz",
-      );
-    } finally {
-      if (host.sealed) await seal(runState, host);
-    }
-
-    await docker("exec", host.container, "rm", "/tmp/wb-test-package.tgz");
-    console.log(packed);
-  } finally {
-    await rm(tarball, { force: true });
-  }
+  console.log(
+    await remoteDevInstall(host.alias, {
+      sshConfig: `${runState.dir}/ssh_config`,
+      version,
+      commit,
+      stdio: ["ignore", process.stderr, process.stderr],
+    }),
+  );
+  await docker(
+    "exec",
+    host.container,
+    "ln",
+    "-sf",
+    `/home/${host.user}/.local/bin/whiteboard`,
+    "/usr/local/bin/whiteboard",
+  );
 }

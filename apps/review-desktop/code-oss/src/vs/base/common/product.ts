@@ -64,6 +64,17 @@ export type ExtensionVirtualWorkspaceSupport = {
 	readonly override?: boolean;
 };
 
+export interface IWhiteboardRemoteArtifact {
+	readonly url: string;
+	readonly sha256: string;
+}
+
+export interface IWhiteboardRemoteProduct {
+	readonly version: string;
+	readonly 'linux-x64': IWhiteboardRemoteArtifact;
+	readonly 'linux-arm64': IWhiteboardRemoteArtifact;
+}
+
 export interface IProductConfiguration {
 	readonly version: string;
 	readonly date?: string;
@@ -77,6 +88,8 @@ export interface IProductConfiguration {
 	 * cannot be the same field. Kept in sync with `apps/review-desktop/package.json`.
 	 */
 	readonly reviewVersion?: string;
+
+	readonly whiteboardRemote?: IWhiteboardRemoteProduct;
 
 	readonly nameShort: string;
 	readonly nameLong: string;

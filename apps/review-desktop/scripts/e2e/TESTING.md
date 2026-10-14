@@ -43,7 +43,7 @@ prints a JSON summary on stdout, one entry per journey, `ok | failed | skipped`.
 ## Phases
 
 Phase 1 runs offline, after a one-time network fetch of the curated VSIX cache
-that `lsp-python` triggers. Phase 2 (`lsp-go`, `lsp-rust`, `remote-host`, `remote-lsp`)
+that `lsp-python` triggers. Phase 2 (`lsp-go`, `lsp-rust`, `remote-host`, `remote-lsp`, `remote-install`)
 downloads toolchains or a container image and runs only with
 `REVIEW_E2E_NETWORK=1` or when named with `--journey`. A journey that exports
 `manual = true` (`remote-lsp-rust`, `remote-lsp-swift`, `remote-lsp-csharp`,
@@ -104,16 +104,18 @@ and fails when AWS cannot be checked. `aws-up` needs a valid
 profile's default region, and each instance terminates itself after three
 hours.
 
+`install` builds this checkout's tarball for the container's arch, installs it
+with `../remote-dev-install.mjs` and links `/usr/local/bin/whiteboard` to it.
+`--commit` rewrites its VS Code server's commit. `pack` writes the tarball.
 `--sealed` deletes the container's default route and checks that an outbound
-request fails; `install` gives the route back only while `npm` runs, then
-checks again. `--delay-ms` delays both directions with `netem`. Both run their
+request fails. `--delay-ms` delays both directions with `netem`. Both run their
 network commands from a throwaway container, so the remote itself never holds
 `NET_ADMIN`.
 
 ## The remote-host journey
 
 `remote-host` runs the review server on another machine: a container from
-`remote.mjs` with `sshd` on a loopback port and the package from this checkout.
+`remote.mjs` with `sshd` on a loopback port and this checkout's remote tarball.
 It needs Docker; without it the journey is skipped with
 `skip: remote-host needs Docker for its SSH server`. The Desktop gets
 `DEV_FAST_REVIEW_SSH_CONFIG`, so its `ssh` uses the run's configuration and
@@ -202,8 +204,9 @@ attach` on a remote, change only that remote's VS Code server:
 - `DEV_FAST_REVIEW_REMOTE_RECONNECTION_GRACE_SECONDS=<1–9999>` replaces its 10-minute reconnection grace; the journey gives B 20 s for step 6.
 
 Against two hosts you prepared, such as AWS instances, set
-`REVIEW_E2E_REMOTE_HOSTS` to their two names in the `WB_TEST_RUN` run. Install
-Node 24 and the package on each by hand, from `$R pack --out <file.tgz>`. The
+`REVIEW_E2E_REMOTE_HOSTS` to their two names in the `WB_TEST_RUN` run. Unpack
+the tarball from `$R pack --out <file.tar.xz> --arch <x64|arm64>` on each and
+put its `whiteboard-remote` directory on `PATH`. The
 journey then skips `up` and `install` and the package swap (step 8). It
 freezes B with `kill -STOP` on its servers, and it leaves the run for you to
 remove:
@@ -211,7 +214,7 @@ remove:
 ```sh
 export WB_TEST_RUN=aws-$$
 $R aws-up a --arch x64; $R aws-up b --arch arm64
-$R pack --out /tmp/wb.tgz    # then, on each host: Node 24, `sudo npm install -g` the tarball
+$R pack --out /tmp/wb.tar.xz --arch arm64   # then, on each host: `tar -xJf` it and add it to PATH
 REVIEW_E2E_REMOTE_HOSTS=a,b node apps/review-desktop/scripts/e2e/run.mjs --runtime "$REVIEW_E2E_RUNTIME" --journey remote-lsp
 $R down --all; $R verify-clean
 ```
@@ -251,3 +254,51 @@ node apps/review-desktop/scripts/e2e/run.mjs --runtime "$REVIEW_E2E_RUNTIME" --j
 The base images stay in Docker after `down`; remove them with `docker rmi`
 when done (`rust:1.98-bookworm`, `swift:6.4-noble`,
 `mcr.microsoft.com/dotnet/sdk:10.0-noble`).
+
+## The remote-install journey
+
+`remote-install` checks that Desktop installs itself on containers that have no
+Whiteboard. It needs Docker and runs in development mode only. It serves this
+checkout's tarballs to Desktop through `DEV_FAST_REVIEW_REMOTE_RELEASES`.
+
+| Container | `up` flags | What it proves |
+|---|---|---|
+| `fresh` | `--platform linux/amd64 --node none` | The x64 install, the next version, Connect, and removal with Whiteboard. |
+| `old` | `--image debian:11 --node none` | glibc 2.31 is `unsupported`, and nothing is written. |
+| `arm` | `--platform linux/arm64 --node none` | The ARM64 install. A user's server at the old version makes it `incompatible`. |
+| `fresh2` | `--platform linux/amd64 --node none --delay-ms 100` | A connection dropped during the install. The reconnect finishes it. |
+| `deny` | `--node none` | **Don't install**: `not-installed`, nothing written, and no second question. |
+| `hand` | `--platform linux/amd64 --node none` | A hand install on `PATH` is `online` without a question. |
+
+On an Apple-silicon Mac, `fresh` and `fresh2` run under emulation.
+
+The journey bumps the patch version in `packages/review/package.json` and
+restores it at the end. Do not edit that file during a run. Run the journey
+under a trap that also restores it:
+
+```sh
+R="node apps/review-desktop/scripts/e2e/remote/remote.mjs"
+export WB_TEST_RUN=e2e-$$
+trap '$R down --all; $R verify-clean; git checkout -- packages/review/package.json' EXIT
+DEV_FAST_REVIEW_DESKTOP_BACKGROUND=1 node apps/review-desktop/scripts/e2e/run.mjs --runtime "$REVIEW_E2E_RUNTIME" --journey remote-install
+```
+
+The connect step needs npm and GitHub on `fresh`.
+
+### On AWS
+
+With `REVIEW_E2E_REMOTE_HOSTS` set to `aws-up` hosts in the `WB_TEST_RUN` run,
+the journey installs on those hosts instead of containers. It never removes the
+run. First publish this checkout's tarballs with
+`DEV_FAST_REVIEW_REMOTE_PUBLISH=1 node apps/review-desktop/scripts/remote-dev-install.mjs`,
+and export the `DEV_FAST_REVIEW_REMOTE_RELEASES` line it prints.
+
+```sh
+R="node apps/review-desktop/scripts/e2e/remote/remote.mjs"
+export WB_TEST_RUN=aws-$$
+trap '$R down --all; $R verify-clean' EXIT
+$R aws-up a --arch x64
+$R aws-up b --arch arm64
+REVIEW_E2E_REMOTE_HOSTS=a,b DEV_FAST_REVIEW_DESKTOP_BACKGROUND=1 \
+  node apps/review-desktop/scripts/e2e/run.mjs --runtime "$REVIEW_E2E_RUNTIME" --journey remote-install
+```

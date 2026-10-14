@@ -52,6 +52,15 @@ echo "$id"
 pwd
 `;
 
+/** Home's row no longer shows the host; its summary carries what the repository filter labels it. */
+export async function listedAs(ctx, title) {
+  const review = (await ctx.apiOk("/reviews-api")).find(
+    (summary) => summary.title === title,
+  );
+
+  return review && `${review.host}: ${review.repositoryGroup?.label}`;
+}
+
 async function remote(...args) {
   return (
     await exec(process.execPath, [remoteScript, ...args], {
@@ -266,15 +275,12 @@ async function journey(ctx, page, until) {
   // 2. Home lists the remote review under the host's label.
   await openHome(ctx);
 
-  const rows = page
-    .locator("main.review-home")
-    .getByRole("region", { name: "Sessions", exact: true })
-    .locator("tbody tr");
+  const rows = page.locator("main.review-home [data-home-row]");
 
   const row = (text) => rows.filter({ hasText: text });
 
   await row(title).waitFor({ timeout: 60000 });
-  assert.ok((await row(title).innerText()).includes(`${alias}: wbrepo`));
+  assert.equal(await listedAs(ctx, title), `${alias}: wbrepo`);
   assert.equal(await row(title).getAttribute("data-unavailable"), null);
   ctx.check(`2. Home lists the remote review as ${alias}: wbrepo`);
 
@@ -531,7 +537,7 @@ async function journey(ctx, page, until) {
     );
     assert.match(
       await hostRow().locator("code").innerText(),
-      /^npm install -g @dev\.fast\/whiteboard@\d+\.\d+\.\d+/,
+      /^mkdir -p ~\/\.dev\/whiteboard-remote && rm -rf ~\/\.dev\/whiteboard-remote\/whiteboard-remote && curl -fsSL https:\/\/install\.dev\.fast\/releases\/\d+\.\d+\.\d+/,
     );
     await openHome(ctx);
 
@@ -571,6 +577,10 @@ async function journey(ctx, page, until) {
   settings = await openSettings(ctx);
   section = settings.getByRole("region", { name: "Remote hosts" });
   await section.getByRole("button", { name: `Remove ${alias}` }).click();
+  await section
+    .getByRole("group", { name: `Remove ${alias}` })
+    .getByRole("button", { name: "Remove host" })
+    .click();
   await until(async () => (await hostRow().count()) === 0, "the row to go");
   await openHome(ctx);
   await row("Laptop order").waitFor();

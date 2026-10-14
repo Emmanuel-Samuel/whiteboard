@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type { IQuickInput, IQuickInputService, IQuickPickItem } from "../../../platform/quickinput/common/quickInput.js";
-import type { ReviewSshPromptEvent } from "../../common/reviewSshPrompt.js";
+import { REVIEW_REMOTE_INSTALL_NO, REVIEW_REMOTE_INSTALL_YES, type ReviewSshPromptEvent } from "../../common/reviewSshPrompt.js";
 
 export type ShownSshPrompt = Exclude<ReviewSshPromptEvent, { closed: true }>;
 
@@ -13,12 +13,22 @@ export function createSshPromptInput(
 	prompt: ShownSshPrompt,
 	title: string,
 	accept: (answer: string | undefined) => void,
+	labels: { install: string; decline: string },
 ): IQuickInput {
 	let input: IQuickInput;
-	if (prompt.kind === "confirm") {
-		const pick = quickInputService.createQuickPick<IQuickPickItem>();
-		pick.items = [{ label: "yes" }, { label: "no" }];
-		pick.onDidAccept(() => accept(pick.selectedItems[0]?.label));
+	if (prompt.kind === "confirm" || prompt.kind === "install") {
+		const pick = quickInputService.createQuickPick<IQuickPickItem & { answer: string }>();
+		pick.items =
+			prompt.kind === "install"
+				? [
+						{ label: labels.install, answer: REVIEW_REMOTE_INSTALL_YES },
+						{ label: labels.decline, answer: REVIEW_REMOTE_INSTALL_NO },
+					]
+				: [
+						{ label: "yes", answer: "yes" },
+						{ label: "no", answer: "no" },
+					];
+		pick.onDidAccept(() => accept(pick.selectedItems[0]?.answer));
 		input = pick;
 	} else {
 		const box = quickInputService.createInputBox();

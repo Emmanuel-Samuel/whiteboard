@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -267,7 +267,6 @@ export async function run(ctx) {
     else {
       await closeDesktop(ctx);
       await rm(proj, { recursive: true, force: true });
-      await rm(`${runDir}/runtime-other`, { recursive: true, force: true });
     }
   }
 }
@@ -392,10 +391,7 @@ async function journey(ctx) {
 
   await openHome(ctx);
 
-  const rows = page
-    .locator("main.review-home")
-    .getByRole("region", { name: "Sessions", exact: true })
-    .locator("tbody tr");
+  const rows = page.locator("main.review-home [data-home-row]");
 
   for (const text of [title.a, title.py, title.b]) {
     const row = rows.filter({ hasText: text });
@@ -457,7 +453,7 @@ async function journey(ctx) {
 
     const diffShown = Date.now();
 
-    await showDiff(ctx, title[m.key], "b.ts");
+    await showDiff(ctx, title[m.key], "b.ts", m.review);
 
     const point = await windowCall(ctx, "point", m.review, "b.ts", 3, "answer");
 
@@ -515,7 +511,7 @@ async function journey(ctx) {
   }
 
   // 4. A Python review on A: ty answers with a type.
-  await showDiff(ctx, title.py, "m.py");
+  await showDiff(ctx, title.py, "m.py", reviewPy);
 
   const pyPoint = await windowCall(ctx, "point", reviewPy, "m.py", 5, "value");
   const pyHover = await pointerHover(page, pyPoint, /\bint\b/, 120000);
@@ -531,7 +527,7 @@ async function journey(ctx) {
   );
 
   // 5. The laptop's own providers for its file are the same after the remotes connected.
-  await showDiff(ctx, title.laptop, "b.ts");
+  await showDiff(ctx, title.laptop, "b.ts", laptop.reviewId);
   await answers(machines[0]);
 
   const countsAfter = await windowCall(ctx, "counts", laptop.reviewId, "b.ts");
@@ -556,7 +552,7 @@ async function journey(ctx) {
 
   // 6. B's tunnel ends for longer than its reconnection lasts; A and the laptop keep answering; B comes back without a reload.
   const [a, b] = [machines[1], machines[2]];
-  await showDiff(ctx, title.b, "b.ts");
+  await showDiff(ctx, title.b, "b.ts", reviewB);
 
   const failuresBefore = (await logLines(failedB)).length;
   const master = await masterPid(aliasB);
@@ -637,21 +633,16 @@ async function journey(ctx) {
 
   // 8. B runs another commit: its reviews read normally, hovers are absent, and Settings says why.
   if (prepared === undefined) {
-    const other = `${runDir}/runtime-other`;
-
     const { commit } = JSON.parse(
       await readFile(path.join(DEFAULT_REMOTE_RUNTIME, "product.json"), "utf8"),
     );
 
-    await cp(DEFAULT_REMOTE_RUNTIME, other, { recursive: true });
-    await writeFile(
-      path.join(other, "product.json"),
-      JSON.stringify({
-        ...JSON.parse(await readFile(path.join(other, "product.json"), "utf8")),
-        commit: commit === "f".repeat(40) ? "e".repeat(40) : "f".repeat(40),
-      }),
+    await remote(
+      "install",
+      nameB,
+      "--commit",
+      commit === "f".repeat(40) ? "e".repeat(40) : "f".repeat(40),
     );
-    await remote("install", nameB, "--runtime", other);
     await onRemote(aliasB, "whiteboard server stop");
 
     const why = `language features need the same Whiteboard version on ${aliasB}`;
@@ -674,16 +665,16 @@ async function journey(ctx) {
     await until(
       async () =>
         (await hostRow(aliasB).innerText()).includes(
-          `Language features: unavailable — ${why}`,
+          `Language features: unavailable · ${why}`,
         ),
       "the Settings row to say why",
     );
 
     const detail = (await hostRow(aliasB).innerText()).match(
-      /Language features: unavailable — .*/,
+      /Language features: unavailable · .*/,
     )[0];
 
-    await showDiff(ctx, title.b, "b.ts");
+    await showDiff(ctx, title.b, "b.ts", reviewB);
     assert.match(await lines(visibleCanvas(page)), /answer \+ 1/);
 
     const absent = await hover(b);
@@ -831,22 +822,30 @@ export const visibleCanvas = (page) =>
 export const tab = (page, text) =>
   page.locator(".tabs-container .tab").filter({ hasText: text });
 
-export async function showDiff(ctx, title, file) {
+export async function showDiff(ctx, title, file, review) {
   await tab(ctx.page, title).click();
-  await ctx.page
-    .locator('[aria-label="Session views"] button[aria-label="Diff"]')
-    .filter({ visible: true })
-    .click();
   await ctx.until(
     async () =>
-      (
-        await ctx.page
-          .locator(".review-path-label")
-          .filter({ visible: true })
-          .allInnerTexts()
-      ).some((text) => text.includes(file)),
-    `the Diff view of ${title} to show ${file}`,
+      /\bactive\b/.test(
+        (await tab(ctx.page, title).getAttribute("class")) ?? "",
+      ),
+    `the ${title} tab to be active`,
   );
+
+  const diff = ctx.page
+    .locator('[aria-label="Session views"] button[aria-label="Diff"]')
+    .filter({ visible: true });
+
+  // The shared canvas shows the previous review briefly after the tab turns active.
+  await ctx.until(async () => {
+    if ((await diff.getAttribute("aria-pressed")) !== "true") {
+      await diff.click();
+
+      return false;
+    }
+
+    return windowCall(ctx, "shown", review, file);
+  }, `the Diff view of ${title} to show ${file}`);
 }
 
 export async function lines(scope) {
@@ -1122,6 +1121,8 @@ async function inWindow(command, args) {
 
   if (!editor)
     return { error: `no visible head editor for ${reviewId}/${file}` };
+
+  if (command === "shown") return { shown: true };
 
   const model = editor.getModel();
 

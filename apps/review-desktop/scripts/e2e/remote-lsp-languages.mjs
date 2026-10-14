@@ -405,8 +405,6 @@ async function journey(ctx, id, language) {
     .waitFor({ timeout: 60000 });
   await tab(page, title).waitFor();
 
-  const fileName = path.basename(language.file);
-
   const content = await readFile(
     path.join(fixtures, language.fixture, language.file),
     "utf8",
@@ -418,7 +416,7 @@ async function journey(ctx, id, language) {
 
   const diffShown = Date.now();
 
-  await showDiff(ctx, title, fileName);
+  await showDiff(ctx, title, language.file, reviewId);
 
   const point = await windowCall(
     ctx,

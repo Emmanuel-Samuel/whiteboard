@@ -21,28 +21,14 @@ config apply to Whiteboard's connections too.
 
 - Linux on x64 or ARM64, with glibc 2.34 or newer (Ubuntu 22.04, Debian 12,
   Fedora 35, RHEL 9 or later).
-- Node 24.
+- A writable home directory with 1 GB free.
+- `tar`, `xz`, `curl` or `wget`, and `sha256sum` or `openssl`.
+- HTTPS access to `install.dev.fast`.
 - An OpenSSH server that allows TCP forwarding. See
   [TCP forwarding](#tcp-forwarding).
-- `whiteboard` on the `PATH` of your login shell there.
 
 Your laptop needs macOS or Linux with the OpenSSH client. A Windows laptop is
 not supported yet.
-
-## Install Whiteboard on the remote
-
-On the remote, install the version that matches your Desktop:
-
-```sh
-npm install -g @dev.fast/whiteboard@<version>
-```
-
-Settings shows the exact command, with the version, when a host needs it.
-Check the install with `whiteboard version`.
-
-You do not need to start anything. Desktop starts the review server when it
-connects. On a remote with no Desktop, `whiteboard api` starts one too, so an
-agent there can write reviews before you connect.
 
 ## Add a host
 
@@ -54,10 +40,12 @@ Remote hosts are experimental. Turn them on in Whiteboard's `settings.json`:
 
 Then open Settings. Under **Remote hosts**, type an alias from your SSH
 configuration (the field suggests them) and click **Add**. The row shows the
-host's state. When it reads `online`, the host's reviews appear in Home.
+host's state. The first time, Desktop asks to install Whiteboard there. When
+the row reads `online`, the host's reviews appear in Home.
 
 **Remove** takes the host and its reviews out of Whiteboard. Nothing on the
-remote is deleted.
+remote is deleted unless you check
+[**Also remove Whiteboard**](#remove-whiteboard-from-a-host).
 
 The hosts are kept in the setting `review.remote.hosts`, a list of aliases.
 Only you can change it: a repository or a remote never adds a host.
@@ -66,17 +54,94 @@ If `ssh` asks for a password, a passphrase or a host key confirmation,
 Whiteboard shows the prompt in its window. Your answer goes to `ssh` and is
 never stored.
 
+## How Desktop installs Whiteboard
+
+Desktop first checks the host and writes nothing. If the host lacks Desktop's
+version, Desktop asks once, then installs it as your user. The host downloads
+it from `install.dev.fast` and checks its pinned checksum before unpacking.
+
+You do not need to start anything. Desktop starts the review server when it
+connects. On a remote with no Desktop, `whiteboard api` starts one too, so an
+agent there can write reviews before you connect.
+
+### What Desktop writes on the remote
+
+| Path | What it is |
+|---|---|
+| `~/.dev/whiteboard-remote/versions/<version>/` | One Whiteboard version, about 250 MB, with its own Node. |
+| `~/.dev/whiteboard-remote/install.lock/` | Present while an install runs. |
+| `~/.local/bin/whiteboard` | A launcher for the newest version, if that path is free or Desktop's own. |
+
+With `DEV_REVIEW_HOME` set on the remote, `whiteboard-remote/` is under it
+instead of `~/.dev`. The review server keeps reviews in `~/.dev`.
+
+### Updates
+
+When Desktop updates, it installs its new version without asking. It restarts
+the review server it started. It keeps the previous version and any version
+still running. It leaves a server you started yourself running.
+
+### The setting
+
+`review.remote.install` decides whether Desktop installs on a host that does
+not have its version:
+
+| Value | What Desktop does |
+|---|---|
+| `ask` (the default) | Asks once per host. |
+| `always` | Installs without asking. |
+| `never` | Never installs, and uses the `whiteboard` on the host's `PATH`. |
+
+### Install by hand
+
+On the remote, with `<version>` set to Desktop's version:
+
+```sh
+mkdir -p ~/.dev/whiteboard-remote && rm -rf ~/.dev/whiteboard-remote/whiteboard-remote && curl -fsSL https://install.dev.fast/releases/<version>/remote/whiteboard-remote-<version>-linux-x64.tar.xz | tar -xJ -C ~/.dev/whiteboard-remote
+mkdir -p ~/.local/bin && ln -sf ~/.dev/whiteboard-remote/whiteboard-remote/whiteboard ~/.local/bin/whiteboard
+```
+
+On ARM64, use `linux-arm64` in place of `linux-x64`.
+
+### Developing
+
+A development Desktop pins no archive. Set `DEV_FAST_REVIEW_REMOTE_RELEASES` to
+a URL that serves the archives and their `.sha256` files, or install this
+checkout's archive with `node apps/review-desktop/scripts/remote-dev-install.mjs <alias>`.
+With `DEV_FAST_REVIEW_REMOTE_PUBLISH=1` and Cloudflare credentials, the script
+publishes the archives and prints the URL to export.
+
+## Agents on the remote
+
+Once a host is `online`, Settings lists its unconnected agents: Claude Code,
+Codex, OpenCode and Pi. **Connect** runs the agent's own install commands on
+the host.
+
+## Remove Whiteboard from a host
+
+In Settings, click **Remove** on the host, check **Also remove Whiteboard from
+`<alias>`**, and click **Remove host**. Desktop then stops the servers
+Whiteboard started and removes `~/.dev/whiteboard-remote/` and its
+`~/.local/bin/whiteboard`. Your reviews stay, and Desktop forgets your install
+answer. Nothing is removed while an install or a process you started runs from
+the install.
+
+On the remote, `whiteboard remote uninstall --keep-reviews` does the same.
+`--delete-reviews` also deletes the reviews.
+
 ## States
 
 | State | Meaning | What to do |
 |---|---|---|
 | `connecting` | Whiteboard is opening the SSH connection and starting the review server. | Wait. |
+| `installing` | Desktop is installing its version there. | Wait. |
 | `online` | Connected. The host's reviews are listed and open. | Nothing. |
 | `offline` | The connection is up, but the review server did not answer. Whiteboard checks every 10 seconds, so a host that hangs shows `offline` within about 15 seconds. | It returns by itself when the server answers. After three checks in a row without an answer, Whiteboard attaches again. A hung server then shows `unreachable`, and its detail names `whiteboard server stop`: run it on the host. |
 | `unreachable` | `ssh` could not connect, the connection ended, or the review server there did not start (the detail says why). | Whiteboard tries again by itself, waiting 1 to 60 seconds between tries; **Retry** tries now. Check that `ssh <alias>` works in a terminal, or do what the detail says. |
 | `auth-failed` | The login was refused, a prompt was cancelled, or the host key did not match. | Fix the login, then click **Retry**. Whiteboard does not retry this by itself. |
-| `not-installed` | `whiteboard` was not found on the remote. | Install it with the command that Settings shows, then click **Retry**. Whiteboard does not retry this by itself. |
-| `incompatible` | The remote runs another version of Whiteboard. | Run the install command that Settings shows, then `whiteboard server stop` on the remote. Desktop starts the new server within about 10 seconds. |
+| `not-installed` | Desktop's version is not on the host, and Desktop did not install it. | Click **Install**, or [install by hand](#install-by-hand) and click **Retry**. |
+| `unsupported` | Whiteboard cannot run on this machine. Nothing was written there. | Use another machine. |
+| `incompatible` | The remote runs another version of Whiteboard. | Stop your server with `whiteboard server stop` and click **Retry**, or update this Desktop. |
 | `duplicate` | Two or more hosts report the same server id, so Whiteboard uses none of them. This happens when one machine is added under two aliases, or a review store was copied to a second machine. | If the aliases are one machine, remove all but one. If they are two machines, remove the copy's host, run `whiteboard server stop` and then `whiteboard server reset-id` on the copy, and add it again. |
 
 While a host is not `online`, its reviews stay in Home, drawn as unavailable.

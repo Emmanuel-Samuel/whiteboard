@@ -18,6 +18,12 @@ import { readBody, send } from "./review-gateway-transport.js";
 
 const version = readReviewPackageVersion(import.meta.url);
 
+const handInstall = (v: string, target = "linux-x64") =>
+  [
+    `mkdir -p ~/.dev/whiteboard-remote && rm -rf ~/.dev/whiteboard-remote/whiteboard-remote && curl -fsSL https://install.dev.fast/releases/${v}/remote/whiteboard-remote-${v}-${target}.tar.xz | tar -xJ -C ~/.dev/whiteboard-remote`,
+    "mkdir -p ~/.local/bin && ln -sf ~/.dev/whiteboard-remote/whiteboard-remote/whiteboard ~/.local/bin/whiteboard",
+  ].join("\n");
+
 let root: string;
 
 const closes: (() => void)[] = [];
@@ -78,13 +84,11 @@ it("refuses a host on another version, naming both versions, with the install co
   expect(state?.detail).toContain("0.0.0-other");
   expect(state?.detail).toContain("Install Whiteboard 0.0.0-other on devbox.");
   expect(state?.detail).not.toContain("npm install");
-  expect(state?.installCommand).toBe(
-    "npm install -g @dev.fast/whiteboard@0.0.0-other",
-  );
+  expect(state?.installCommand).toBe(handInstall("0.0.0-other"));
   expect(gateway.online()).toEqual([]);
 });
 
-it("names this machine's install command for a host without Whiteboard", () => {
+it("names this machine's install command for a host without Whiteboard, for the host's arch", () => {
   const gateway = hosts("0.1.6");
 
   gateway.set([
@@ -93,6 +97,14 @@ it("names this machine's install command for a host without Whiteboard", () => {
       problem: {
         state: "not-installed",
         detail: "Whiteboard is not installed on devbox.",
+      },
+    },
+    {
+      alias: "graviton",
+      target: "linux-arm64",
+      problem: {
+        state: "not-installed",
+        detail: "Whiteboard is not installed on graviton.",
       },
     },
     {
@@ -106,9 +118,94 @@ it("names this machine's install command for a host without Whiteboard", () => {
       alias: "devbox",
       state: "not-installed",
       detail: "Whiteboard is not installed on devbox.",
-      installCommand: "npm install -g @dev.fast/whiteboard@0.1.6",
+      installCommand: handInstall("0.1.6"),
+    },
+    {
+      alias: "graviton",
+      state: "not-installed",
+      detail: "Whiteboard is not installed on graviton.",
+      installCommand: handInstall("0.1.6", "linux-arm64"),
     },
     { alias: "other", state: "auth-failed", detail: "Permission denied." },
+  ]);
+});
+
+it("an unsupported host keeps its reason and gets no install command", () => {
+  const gateway = hosts("0.1.6");
+  const detail = "This host runs glibc 2.31; Whiteboard needs 2.34 or newer.";
+
+  gateway.set([{ alias: "old", problem: { state: "unsupported", detail } }]);
+
+  expect(gateway.states()).toEqual([
+    { alias: "old", state: "unsupported", detail },
+  ]);
+});
+
+it("a declined host keeps the install command and says it was declined", () => {
+  const gateway = hosts("0.1.6");
+  const detail = "Whiteboard is not installed on box.";
+
+  gateway.set([
+    {
+      alias: "box",
+      problem: { state: "not-installed", detail },
+      declined: true,
+    },
+  ]);
+
+  expect(gateway.states()).toEqual([
+    {
+      alias: "box",
+      state: "not-installed",
+      detail,
+      installCommand: handInstall("0.1.6"),
+      declined: true,
+    },
+  ]);
+});
+
+it("an older server after a failed or declined install is incompatible, says why, and offers the install", async () => {
+  const fake = await startFake({ version: "0.1.5" });
+  const gateway = hosts("0.1.6");
+
+  const installFailure =
+    "Installing Whiteboard 0.1.6 on box failed while installing the package: npm ERR! 404.";
+
+  gateway.set([
+    { alias: "box", endpoint: fake.endpoint, installFailure, declined: true },
+  ]);
+
+  await expect
+    .poll(() => gateway.states()[0])
+    .toMatchObject({
+      state: "incompatible",
+      detail: `box runs Whiteboard 0.1.5; this Desktop runs 0.1.6. Install Whiteboard 0.1.6 on box. ${installFailure}`,
+      declined: true,
+    });
+});
+
+it("a declined host on this Desktop's version is online, with no install offered", async () => {
+  const fake = await startFake({ version: "0.1.6" });
+  const gateway = hosts("0.1.6");
+
+  gateway.set([{ alias: "box", endpoint: fake.endpoint, declined: true }]);
+  expect(gateway.states()[0]).toMatchObject({ state: "connecting" });
+  expect(gateway.states()[0]).not.toHaveProperty("declined");
+
+  await expect.poll(() => gateway.states()[0]?.state).toBe("online");
+  expect(gateway.states()[0]).not.toHaveProperty("declined");
+});
+
+it("a server a user started at another version is incompatible, with no install command", () => {
+  const gateway = hosts("0.1.7");
+
+  const detail =
+    "A Whiteboard server 0.1.6 started by a user is running on box; stop it to use this Desktop's version.";
+
+  gateway.set([{ alias: "box", problem: { state: "incompatible", detail } }]);
+
+  expect(gateway.states()).toEqual([
+    { alias: "box", state: "incompatible", detail },
   ]);
 });
 

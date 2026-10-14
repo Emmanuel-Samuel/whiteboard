@@ -149,7 +149,7 @@ test("reads the remote hosts' states from the Desktop server", async (t) => {
 	const service = serviceWith();
 	t.after(() => service.dispose());
 	const requests: string[] = [];
-	const answer = [{ alias: "devbox", serverId: "s1", state: "online" }, { alias: "box2", state: "not-installed", detail: "Install it.", installCommand: "npm install -g @dev.fast/whiteboard@0.1.6" }];
+	const answer = [{ alias: "devbox", serverId: "s1", state: "online" }, { alias: "box2", state: "not-installed", detail: "Install it.", installCommand: "npm install -g @dev.fast/whiteboard@0.1.6", declined: true }];
 	mockFetch(t, async (input, init) => {
 		requests.push(`${String(input)} ${new Headers(init?.headers).get("x-review-token")}`);
 		return Response.json(answer);

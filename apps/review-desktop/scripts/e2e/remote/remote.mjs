@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { awsUp } from "./aws-hosts.mjs";
-import { containerOf, install, packStaged, up } from "./docker-hosts.mjs";
+import { containerOf, install, packTarball, up } from "./docker-hosts.mjs";
 import { docker, inherit } from "./exec.mjs";
 import { down, downEveryRun, downRun } from "./removal.mjs";
 import { checkName, hostOf, openRun } from "./run-state.mjs";
@@ -16,8 +16,8 @@ const usage = `usage: remote.mjs <command>
             [--auth key|password] [--banner] [--shell bash|fish] [--jump <name>]
             [--sealed] [--delay-ms <n>] [--no-forwarding] [--port <n>]
             [--toolchain rust|swift|dotnet]
-  install <name> [--version <v>] [--runtime <remote runtime dir>]
-  pack --out <file.tgz> [--version <v>] [--runtime <remote runtime dir>]
+  install <name> [--version <v>] [--commit <VS Code server commit>]
+  pack --out <file.tar.xz> [--version <v>] [--arch x64|arm64]
   ssh <name> -- <command...>
   forward <name> <remote port>
   pause <name> | resume <name> | logs <name>
@@ -50,7 +50,7 @@ async function main(argv) {
       port: { type: "string" },
       toolchain: { type: "string" },
       version: { type: "string" },
-      runtime: { type: "string" },
+      commit: { type: "string" },
       out: { type: "string" },
       arch: { type: "string" },
       all: { type: "boolean" },
@@ -74,18 +74,23 @@ async function main(argv) {
     case "aws-up":
       return awsUp(await openRun(true), name, values);
     case "install":
+      if (values.commit !== undefined && !/^[0-9a-f]{40}$/.test(values.commit))
+        throw new Error("--commit must be 40 hex digits");
+
       return install(await openRun(false), name, {
         version: values.version,
-        runtime: values.runtime && path.resolve(values.runtime),
+        commit: values.commit,
       });
     case "pack":
-      if (!values.out) throw new Error("pack needs --out <file.tgz>");
+      if (!values.out) throw new Error("pack needs --out <file.tar.xz>");
 
       return console.log(
-        await packStaged(path.resolve(values.out), {
-          version: values.version,
-          runtime: values.runtime && path.resolve(values.runtime),
-        }),
+        JSON.stringify(
+          await packTarball(path.resolve(values.out), {
+            version: values.version,
+            arch: values.arch,
+          }),
+        ),
       );
     case "ssh": {
       const runState = await openRun(false);

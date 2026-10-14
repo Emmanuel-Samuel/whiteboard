@@ -191,3 +191,15 @@ export async function stageVscodeServer(
 
   return destination;
 }
+
+export async function pruneVscodeServerArch(packageRoot, target) {
+  const server = path.join(packageRoot, "vscode-server");
+
+  for (const other of remoteTargets.filter((t) => t !== target)) {
+    for (const dir of [
+      `out/vs/workbench/api/bin/${other}`,
+      `node_modules/@parcel/watcher-${other}-glibc`,
+    ])
+      fs.rmSync(path.join(server, dir), { recursive: true, force: true });
+  }
+}
