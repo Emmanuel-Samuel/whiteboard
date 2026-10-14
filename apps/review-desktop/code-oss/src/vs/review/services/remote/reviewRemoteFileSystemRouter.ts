@@ -5,38 +5,46 @@
 
 import { Emitter, Event } from "../../../base/common/event.js";
 import { Disposable, type IDisposable, toDisposable } from "../../../base/common/lifecycle.js";
+import { isEqualOrParent, normalizePath } from "../../../base/common/resources.js";
 import type { URI } from "../../../base/common/uri.js";
 import {
 	createFileSystemProviderError,
+	FilePermission,
 	type FileType,
 	FileSystemProviderCapabilities,
 	FileSystemProviderErrorCode,
 	type IFileChange,
+	type IFileDeleteOptions,
+	type IFileOverwriteOptions,
 	type IFileSystemProviderWithFileReadWriteCapability,
+	type IFileWriteOptions,
 	type IStat,
 	type IWatchOptions,
 } from "../../../platform/files/common/files.js";
 
+/** Review files on a host are read-only; only the storage the host's extension host was given is writable. */
 export class ReviewRemoteFileSystemRouter extends Disposable implements IFileSystemProviderWithFileReadWriteCapability {
 	readonly capabilities =
-		FileSystemProviderCapabilities.FileReadWrite |
-		FileSystemProviderCapabilities.PathCaseSensitive |
-		FileSystemProviderCapabilities.Readonly;
+		FileSystemProviderCapabilities.FileReadWrite | FileSystemProviderCapabilities.PathCaseSensitive;
 	readonly onDidChangeCapabilities = Event.None;
 	private readonly changed = this._register(new Emitter<readonly IFileChange[]>());
 	readonly onDidChangeFile = this.changed.event;
 	private readonly watchErrors = this._register(new Emitter<string>());
 	readonly onDidWatchError = this.watchErrors.event;
 	private readonly hosts = new Map<string, IFileSystemProviderWithFileReadWriteCapability>();
+	private readonly writable = new Map<string, readonly URI[]>();
 
-	add(authority: string, provider: IFileSystemProviderWithFileReadWriteCapability): IDisposable {
+	add(authority: string, provider: IFileSystemProviderWithFileReadWriteCapability, writable: readonly URI[]): IDisposable {
 		this.hosts.set(authority, provider);
+		this.writable.set(authority, writable);
 		const changes = provider.onDidChangeFile((e) => this.changed.fire(e));
 		const errors = provider.onDidWatchError?.((e) => this.watchErrors.fire(e));
 		return toDisposable(() => {
 			changes.dispose();
 			errors?.dispose();
-			if (this.hosts.get(authority) === provider) this.hosts.delete(authority);
+			if (this.hosts.get(authority) !== provider) return;
+			this.hosts.delete(authority);
+			this.writable.delete(authority);
 		});
 	}
 
@@ -46,8 +54,21 @@ export class ReviewRemoteFileSystemRouter extends Disposable implements IFileSys
 		return host;
 	}
 
+	private canWrite(resource: URI): boolean {
+		const path = normalizePath(resource);
+		return (this.writable.get(resource.authority.toLowerCase()) ?? []).some((root) => isEqualOrParent(path, root));
+	}
+
+	private writer(...resources: URI[]): IFileSystemProviderWithFileReadWriteCapability {
+		if (!resources.every((resource) => this.canWrite(resource))) {
+			throw createFileSystemProviderError("Remote review files are read-only.", FileSystemProviderErrorCode.NoPermissions);
+		}
+		return this.host(resources[0]);
+	}
+
 	async stat(resource: URI): Promise<IStat> {
-		return this.host(resource).stat(resource);
+		const stat = await this.host(resource).stat(resource);
+		return this.canWrite(resource) ? stat : { ...stat, permissions: (stat.permissions ?? 0) | FilePermission.Readonly };
 	}
 
 	async readdir(resource: URI): Promise<[string, FileType][]> {
@@ -62,23 +83,22 @@ export class ReviewRemoteFileSystemRouter extends Disposable implements IFileSys
 		return this.hosts.get(resource.authority.toLowerCase())?.watch(resource, opts) ?? Disposable.None;
 	}
 
-	writeFile(): Promise<void> {
-		return refuse();
+	async writeFile(resource: URI, content: Uint8Array, opts: IFileWriteOptions): Promise<void> {
+		return this.writer(resource).writeFile(resource, content, opts);
 	}
 
-	mkdir(): Promise<void> {
-		return refuse();
+	async mkdir(resource: URI): Promise<void> {
+		return this.writer(resource).mkdir(resource);
 	}
 
-	delete(): Promise<void> {
-		return refuse();
+	async delete(resource: URI, opts: IFileDeleteOptions): Promise<void> {
+		return this.writer(resource).delete(resource, opts);
 	}
 
-	rename(): Promise<void> {
-		return refuse();
+	async rename(from: URI, to: URI, opts: IFileOverwriteOptions): Promise<void> {
+		if (from.authority.toLowerCase() !== to.authority.toLowerCase()) {
+			throw createFileSystemProviderError("Files cannot move between remote hosts.", FileSystemProviderErrorCode.NoPermissions);
+		}
+		return this.writer(from, to).rename(from, to, opts);
 	}
-}
-
-function refuse(): Promise<never> {
-	return Promise.reject(createFileSystemProviderError("Remote review files are read-only.", FileSystemProviderErrorCode.NoPermissions));
 }

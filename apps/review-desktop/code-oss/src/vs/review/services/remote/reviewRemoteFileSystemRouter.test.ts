@@ -3,7 +3,7 @@ import test from "node:test";
 import { Emitter } from "../../../base/common/event.js";
 import { URI } from "../../../base/common/uri.js";
 import {
-	FileSystemProviderCapabilities,
+	FilePermission,
 	FileSystemProviderErrorCode,
 	type IFileChange,
 	type IFileSystemProviderWithFileReadWriteCapability,
@@ -13,8 +13,9 @@ import { ReviewRemoteFileSystemRouter } from "./reviewRemoteFileSystemRouter.js"
 
 const A = "whiteboard+aaaa-1111";
 const B = "whiteboard+bbbb-2222";
+const storage = (authority: string) => URI.parse(`vscode-remote://${authority}/data/User/workspaceStorage`);
 
-function remote(name: string) {
+function remote(name: string, written: string[] = []) {
 	const changed = new Emitter<readonly IFileChange[]>();
 	const provider = {
 		onDidChangeFile: changed.event,
@@ -22,7 +23,8 @@ function remote(name: string) {
 		stat: async () => ({ type: 1, ctime: 0, mtime: 0, size: name.length }),
 		readdir: async () => [[name, 1]],
 		watch: () => ({ dispose() { } }),
-		writeFile: async () => { throw new Error(`${name} was written`); },
+		writeFile: async (resource: URI) => { written.push(`${name}:${resource.path}`); },
+		mkdir: async (resource: URI) => { written.push(`${name}:${resource.path}`); },
 	} as unknown as IFileSystemProviderWithFileReadWriteCapability;
 	return { provider, changed };
 }
@@ -39,8 +41,8 @@ async function code(promise: Promise<unknown>) {
 
 test("each call goes to the host the authority names, whatever its case", async () => {
 	const router = new ReviewRemoteFileSystemRouter();
-	router.add(A, remote("a").provider);
-	router.add(B, remote("b").provider);
+	router.add(A, remote("a").provider, [storage(A)]);
+	router.add(B, remote("b").provider, [storage(B)]);
 	assert.equal(text(await router.readFile(URI.parse(`vscode-remote://${A}/p/a.ts`))), "a:/p/a.ts");
 	assert.equal(text(await router.readFile(URI.parse(`vscode-remote://${B}/p/a.ts`))), "b:/p/a.ts");
 	assert.equal(text(await router.readFile(URI.parse(`vscode-remote://${A.toUpperCase()}/p/a.ts`))), "a:/p/a.ts");
@@ -50,25 +52,29 @@ test("each call goes to the host the authority names, whatever its case", async 
 
 test("an authority that names no connected host is a missing file", async () => {
 	const router = new ReviewRemoteFileSystemRouter();
-	const added = router.add(A, remote("a").provider);
+	const added = router.add(A, remote("a").provider, [storage(A)]);
 	assert.equal(await code(router.stat(URI.parse(`vscode-remote://${B}/p/a.ts`))), FileSystemProviderErrorCode.FileNotFound);
 	added.dispose();
 	assert.equal(await code(router.readFile(URI.parse(`vscode-remote://${A}/p/a.ts`))), FileSystemProviderErrorCode.FileNotFound);
 	router.dispose();
 });
 
-test("it is read-only and refuses every change without reaching a host", async () => {
+test("review files are read-only, but the host's storage is written on that host", async () => {
 	const router = new ReviewRemoteFileSystemRouter();
-	router.add(A, remote("a").provider);
-	const file = URI.parse(`vscode-remote://${A}/p/a.ts`);
-	assert.ok(router.capabilities & FileSystemProviderCapabilities.Readonly);
-	for (const change of [
-		router.writeFile(),
-		router.mkdir(),
-		router.delete(),
-		router.rename(),
-	]) assert.equal(await code(change), FileSystemProviderErrorCode.NoPermissions);
-	assert.equal(text(await router.readFile(file)), "a:/p/a.ts");
+	const written: string[] = [];
+	router.add(A, remote("a", written).provider, [storage(A)]);
+	router.add(B, remote("b", written).provider, [storage(B)]);
+	const source = URI.parse(`vscode-remote://${A}/repo/a.py`);
+	const stored = URI.parse(`vscode-remote://${A}/data/User/workspaceStorage/ws/ms-python.python/pythonrc.py`);
+	const escape = URI.parse(`vscode-remote://${A}/data/User/workspaceStorage/../../../repo/a.py`);
+	const options = { create: true, overwrite: true, unlock: false, atomic: false } as const;
+	assert.equal(await code(router.writeFile(source, new Uint8Array(), options)), FileSystemProviderErrorCode.NoPermissions);
+	assert.equal(await code(router.writeFile(escape, new Uint8Array(), options)), FileSystemProviderErrorCode.NoPermissions);
+	assert.ok(((await router.stat(source)).permissions ?? 0) & FilePermission.Readonly);
+	assert.ok(!(((await router.stat(stored)).permissions ?? 0) & FilePermission.Readonly));
+	await router.mkdir(URI.parse(`vscode-remote://${A}/data/User/workspaceStorage/ws`));
+	await router.writeFile(stored, new Uint8Array(), options);
+	assert.deepEqual(written, ["a:/data/User/workspaceStorage/ws", "a:/data/User/workspaceStorage/ws/ms-python.python/pythonrc.py"]);
 	router.dispose();
 });
 
@@ -78,9 +84,9 @@ test("changes from a host are passed on until that host is removed, and a newer 
 	const second = remote("second");
 	const seen: string[] = [];
 	router.onDidChangeFile((changes) => seen.push(...changes.map((change) => change.resource.path)));
-	const removeFirst = router.add(A, first.provider);
+	const removeFirst = router.add(A, first.provider, []);
 	first.changed.fire([{ type: 0, resource: URI.parse(`vscode-remote://${A}/one`) }]);
-	router.add(A, second.provider);
+	router.add(A, second.provider, []);
 	removeFirst.dispose();
 	first.changed.fire([{ type: 0, resource: URI.parse(`vscode-remote://${A}/two`) }]);
 	second.changed.fire([{ type: 0, resource: URI.parse(`vscode-remote://${A}/three`) }]);
