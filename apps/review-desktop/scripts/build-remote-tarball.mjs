@@ -433,29 +433,14 @@ const checkoutState = () => {
   return hash.digest("hex").slice(0, 32);
 };
 
-/** The version run.sh gives this checkout's dev Desktop. */
-async function devVersion() {
-  const state = execFileSync(
-    "bash",
-    [
-      "-c",
-      "{ git rev-parse HEAD; git status --porcelain=v1 --untracked-files=all; git diff HEAD --binary; } | git hash-object --stdin",
-    ],
-    { cwd: monorepoRoot, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
-  );
-
-  const { version } = await readJson(path.join(reviewPackage, "package.json"));
-
-  return `${version}+dev.${state.slice(0, 12)}`;
-}
-
-/** This checkout's tarball, built once per checkout state, version and target; the version defaults to its dev Desktop's. */
+/** This checkout's tarball, built once per checkout state, version and target. */
 export async function buildDevRemoteTarball({
   target,
   version,
   stdio = "inherit",
 }) {
-  version ??= await devVersion();
+  version ??= (await readJson(path.join(reviewPackage, "package.json")))
+    .version;
 
   const dev = path.join(DEFAULT_CACHE, "dev");
   const state = checkoutState();

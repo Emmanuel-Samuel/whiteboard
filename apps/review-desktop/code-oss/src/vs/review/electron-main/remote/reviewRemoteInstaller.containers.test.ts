@@ -43,7 +43,7 @@ const realSsh: SpawnSsh = (args, options) => spawn("ssh", args, options);
 
 let started = false;
 let controlDirectory = "";
-let releases: { url: string; stage(target: ReviewRemoteTarget, version: string): Promise<void>; close(): Promise<void> } | undefined;
+let releases: { url: string; stage(target: ReviewRemoteTarget): Promise<void>; close(): Promise<void> } | undefined;
 const masters: ReviewSshSession[] = [];
 const found = new Map<Host, { session: ReviewSshSession; probe: ReviewRemoteProbe; target: ReviewRemoteTarget }>();
 const artifacts = new Map<ReviewRemoteTarget, ReviewRemoteArtifact>();
@@ -82,7 +82,7 @@ before(
 		releases = await serveReleases();
 		for (const { target } of found.values()) {
 			if (artifacts.has(target)) continue;
-			await releases!.stage(target, VERSION);
+			await releases!.stage(target);
 			artifacts.set(target, await remoteArtifact(target, VERSION, { pin: undefined, releases: releases!.url }));
 		}
 	},
