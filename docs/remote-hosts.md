@@ -57,9 +57,9 @@ never stored.
 ## How Desktop installs Whiteboard
 
 Desktop first checks the host and writes nothing. If the host has no
-Whiteboard, Desktop asks once, then installs as your user. A host with another
-Whiteboard version gets Desktop's version without a question. The host
-downloads it from `install.dev.fast` and checks its pinned checksum before
+Whiteboard, Desktop asks once, then installs as your user. A host with a
+version Desktop installed gets Desktop's new version without a question. The
+host downloads it from `install.dev.fast` and checks its pinned checksum before
 unpacking.
 
 You do not need to start anything. Desktop starts the review server when it
@@ -80,10 +80,9 @@ instead of `~/.dev`. The review server keeps reviews in `~/.dev`.
 ### Updates
 
 When Desktop updates, it installs its new version without asking on a host
-where it installed Whiteboard before. It asks first where you installed
-Whiteboard yourself. It restarts the review server it started. It keeps the
-previous version and any version still running. It leaves a server you started
-yourself running.
+where it installed Whiteboard before. It restarts the review server it started.
+It keeps the previous version and any version still running. It leaves a server
+you started yourself running.
 
 ### The setting
 
@@ -92,7 +91,7 @@ not have its version:
 
 | Value | What Desktop does |
 |---|---|
-| `ask` (the default) | Asks once per host, unless the host already has a Whiteboard version. |
+| `ask` (the default) | Asks once per host, unless Desktop installed Whiteboard there before. |
 | `always` | Installs without asking. |
 | `never` | Never installs, and uses the `whiteboard` on the host's `PATH`. |
 
