@@ -137,7 +137,7 @@ export interface WhiteboardCoreInput {
     /** Tests only: an in-process agent. */
     launch?: AskAgentLauncher;
     /** Where agents are found, and the environment they run in. */
-    env?: NodeJS.ProcessEnv;
+    env?: Promise<NodeJS.ProcessEnv>;
   };
 }
 
@@ -160,7 +160,8 @@ export function createWhiteboardCore(input: WhiteboardCoreInput) {
   const askThreads =
     ask &&
     new AskThreads(
-      (agent, cwd, options) => launch(agent, cwd, { ...options, env: ask.env }),
+      async (agent, cwd, options) =>
+        launch(agent, cwd, { ...options, env: await ask.env }),
       ask.tools,
     );
 
@@ -191,7 +192,7 @@ export function createWhiteboardCore(input: WhiteboardCoreInput) {
     input.hooks,
     askThreads && {
       threads: askThreads,
-      agents: () => detectAskAgents(ask?.env),
+      agents: async () => detectAskAgents(await ask?.env),
     },
   );
 

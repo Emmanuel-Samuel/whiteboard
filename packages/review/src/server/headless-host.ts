@@ -207,8 +207,6 @@ async function serve(input: HeadlessServerInput) {
     "cli.js",
   );
 
-  const env = await agentEnv();
-
   const { app, api, close } = createWhiteboardCore({
     profile: local,
     relay,
@@ -224,7 +222,7 @@ async function serve(input: HeadlessServerInput) {
         value: input.stateDir,
       }),
       launch: input.launchAskAgent,
-      env,
+      env: agentEnv(),
     },
   });
 
