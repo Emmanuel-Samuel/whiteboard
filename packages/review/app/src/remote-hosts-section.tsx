@@ -3,7 +3,6 @@ import { Checkbox } from "@canvas/ui/checkbox";
 import { TextField } from "@canvas/ui/text-field";
 import {
   REVIEW_CLI_INSTALL_TARGET_LABELS,
-  type ReviewGatewayHostState,
   type ReviewRemoteAgent,
   type ReviewRemoteHostsSettings,
   reviewHostStatus,
@@ -12,19 +11,14 @@ import * as stylex from "@stylexjs/stylex";
 import { useEffect, useRef, useState } from "react";
 
 import { CopyableText } from "./copy-text";
-import { useRemoteHostStates, useSettingsReveal } from "./remote-host-state";
+import {
+  ACTION_WORDS,
+  useHostAction,
+  useRemoteHostStates,
+  useSettingsReveal,
+} from "./remote-host-state";
 import { settingsStyles as styles } from "./settings-styles";
 import { tokens } from "./tokens.stylex";
-
-const RETRIED = new Set<ReviewGatewayHostState["state"]>([
-  "auth-failed",
-  "incompatible",
-  "not-installed",
-  "offline",
-  "unreachable",
-  "duplicate",
-  "unsupported",
-]);
 
 export function RemoteHostsSection({
   hosts,
@@ -98,6 +92,7 @@ export function RemoteHostsSection({
       <h2 {...stylex.props(styles.sectionLabel)}>Remote hosts</h2>
       {configured.map((name) => {
         const state = states?.find((host) => host.alias === name);
+        const failed = !!state && !!reviewHostStatus(state).action;
 
         return (
           <div key={name} {...stylex.props(styles.row)} data-remote-host="">
@@ -105,7 +100,7 @@ export function RemoteHostsSection({
               <span {...stylex.props(styles.rowLabel)}>{name}</span>
               {states ? (
                 <Detail
-                  failed={state !== undefined && RETRIED.has(state.state)}
+                  failed={failed}
                   text={
                     state?.detail ??
                     reviewHostStatus(
@@ -148,18 +143,10 @@ export function RemoteHostsSection({
             </div>
             <div {...stylex.props(styles.rowControl, local.actions)}>
               {state?.declined ? (
-                <HostStep
-                  label="Install"
-                  alias={name}
-                  run={() => hosts.install(name)}
-                />
+                <HostStep hosts={hosts} alias={name} action="install" />
               ) : null}
-              {state && RETRIED.has(state.state) ? (
-                <HostStep
-                  label="Retry"
-                  alias={name}
-                  run={() => hosts.retry(name)}
-                />
+              {failed ? (
+                <HostStep hosts={hosts} alias={name} action="retry" />
               ) : null}
               <Button
                 aria-label={`Remove ${name}`}
@@ -335,16 +322,16 @@ function RemoteHostAgents({
 }
 
 function HostStep({
-  label,
+  hosts,
   alias,
-  run,
+  action,
 }: {
-  label: string;
+  hosts: ReviewRemoteHostsSettings;
   alias: string;
-  run(): Promise<void>;
+  action: "retry" | "install";
 }) {
-  const [pending, setPending] = useState(false);
-  const [failure, setFailure] = useState<string>();
+  const { run, pending, failure } = useHostAction(hosts, alias);
+  const label = ACTION_WORDS[action];
 
   return (
     <>
@@ -357,13 +344,7 @@ function HostStep({
         aria-label={`${label} ${alias}`}
         aria-busy={pending || undefined}
         disabled={pending}
-        onClick={() => {
-          setPending(true);
-          setFailure(undefined);
-          void run()
-            .catch((error: Error) => setFailure(error.message))
-            .finally(() => setPending(false));
-        }}
+        onClick={() => run(action)}
       >
         {label}
       </Button>
