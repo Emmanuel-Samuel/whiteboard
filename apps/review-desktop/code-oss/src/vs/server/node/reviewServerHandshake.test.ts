@@ -160,6 +160,10 @@ if (external) {
 		const connection = await handshake(target);
 		assert.equal(connection.environment.pid, server.pid);
 		assert.match(output, /Launched Extension Host Process/);
+		const extensions = connection.management.client.getChannel('extensions');
+		assert.deepEqual(await extensions.call('getInstalled', []), []);
+		await assert.rejects(extensions.call('installFromGallery', []), /not managed from a Source window \(installFromGallery\)/);
+		await connection.management.client.getChannel('extensionGalleryManifest').call('setExtensionGalleryManifest', [null]);
 		close(connection);
 	});
 

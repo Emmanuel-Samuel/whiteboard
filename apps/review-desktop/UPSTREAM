@@ -618,7 +618,8 @@ one of these entries:
     profile, extension host status, lifetime and extensions scanner services,
     and the `logger`, `userDataProfiles`, `remoteextensionsenvironment`,
     `remoteExtensionsScanner`, `remoteFilesystem` and extension host debug
-    broadcast channels. `telemetry` is a no-op channel and `ITelemetryService`
+    broadcast channels. `telemetry` is a no-op channel, `extensions` and
+    `extensionGalleryManifest` list no extensions, and `ITelemetryService`
     is `NullTelemetryService`. Cuts requests, telemetry appenders and machine
     ids, the gallery and extension installs, language packs, terminals, the
     agent host, MCP and the sandbox helper.
