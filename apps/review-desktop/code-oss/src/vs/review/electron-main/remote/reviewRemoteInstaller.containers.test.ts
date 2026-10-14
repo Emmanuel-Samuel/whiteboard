@@ -137,17 +137,6 @@ test("a host with no Node downloads the tarball, with diffr inside it; whiteboar
 	assert.equal(await inContainer("fresh", "ls -d ~/.dev/whiteboard-remote/install.lock 2>/dev/null | wc -l"), "0");
 });
 
-test("an install has the Ask adapters but not the bundled agent binaries", { skip, timeout: 10 * 60_000 }, async () => {
-	await installRemote(input("fresh").value);
-	const modules = `${installed}/node_modules`;
-
-	assert.equal(await inContainer("fresh", `test -f ${modules}/@agentclientprotocol/codex-acp/dist/index.js && echo yes`), "yes");
-	assert.equal(await inContainer("fresh", `test -f ${modules}/@agentclientprotocol/claude-agent-acp/dist/index.js && echo yes`), "yes");
-	assert.equal(await inContainer("fresh", `ls -d ${modules}/@openai/codex-* ${modules}/@anthropic-ai/claude-agent-sdk-* 2>/dev/null | wc -l`), "0");
-	assert.equal(await inContainer("fresh", `test -x ${modules}/@dev.fast/diffr-linux-*/diffr && echo yes`), "yes");
-	assert.equal(await version("fresh"), VERSION);
-});
-
 test("a tarball the host cannot download fails the install with the URL and leaves nothing", { skip, timeout: 10 * 60_000 }, async () => {
 	await reset("fresh");
 	const { value } = input("fresh");

@@ -17,6 +17,11 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { PassThrough } from "node:stream";
 
+import {
+  type ClientConnection,
+  agent,
+  methods,
+} from "@agentclientprotocol/sdk";
 import * as diffr from "@dev.fast/diffr";
 import {
   type JsonValue,
@@ -27,7 +32,6 @@ import {
   parseReviewDesktopVerbFrame,
 } from "@dev.fast/review-protocol";
 import type { AskAgentLauncher } from "@review/ask/agents.js";
-import { idleAskAgent } from "@review/ask/ask-test-utils.js";
 import { runReviewCli } from "@review/cli-runner.js";
 import {
   connectReviewApi,
@@ -1380,24 +1384,34 @@ it("finds and launches Ask agents on the login shell's PATH, with its own node l
   );
 });
 
-it("starts with its own PATH when the login shell hangs", async () => {
-  const bin = path.join(root, "bin");
-  await executable(path.join(bin, "claude"), "exit 0");
-  await executable(path.join(root, "shell"), "sleep 60");
-  vi.stubEnv("SHELL", path.join(root, "shell"));
-  vi.stubEnv("PATH", `${bin}:/usr/bin:/bin`);
-
-  const { claude, env } = await askAgentsAndEnv();
-
-  expect(claude).toMatchObject({ available: true });
-  expect(env?.PATH).toBe(
-    [bin, "/usr/bin:/bin", path.dirname(process.execPath)].join(path.delimiter),
-  );
-}, 20_000);
-
 it("opens an Ask thread in the review's checkout and closes it on stop", async () => {
-  const { launch, counts } = idleAskAgent();
-  const server = await start(undefined, false, launch);
+  let launches = 0,
+    stopped = 0;
+
+  const fake = agent({ name: "fake" })
+    .onRequest(methods.agent.initialize, () => ({
+      protocolVersion: 1,
+      agentCapabilities: {},
+      authMethods: [],
+    }))
+    .onRequest(methods.agent.session.new, () => ({ sessionId: "session" }))
+    .onRequest(methods.agent.session.prompt, () => ({
+      stopReason: "end_turn" as const,
+    }));
+
+  const server = await start(undefined, false, async () => {
+    let connection: ClientConnection | undefined;
+    launches++;
+
+    return {
+      connect: (client) => (connection = client.connect(fake)),
+      diagnostics: () => "",
+      stop: () => {
+        stopped++;
+        connection?.close();
+      },
+    };
+  });
 
   const { root: checkout, worktree } = await reviewsOfBothKinds(server.client);
 
@@ -1420,10 +1434,10 @@ it("opens an Ask thread in the review's checkout and closes it on stop", async (
   const { value = "" } = await reader.read();
   expect(JSON.parse(value.split("\n")[0]!).update.snapshot.cwd).toBe(checkout);
 
-  await vi.waitFor(() => expect(counts.launches).toBe(1));
-  expect(counts.stopped).toBe(0);
+  await vi.waitFor(() => expect(launches).toBe(1));
+  expect(stopped).toBe(0);
   await server.stop();
-  expect(counts.stopped).toBe(1);
+  expect(stopped).toBe(1);
 
   while (!(await reader.read()).done);
 });

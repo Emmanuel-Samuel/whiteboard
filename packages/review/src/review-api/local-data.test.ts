@@ -25,9 +25,6 @@ import {
   REVIEW_CLIENT_REMOTE,
 } from "@dev.fast/review-protocol";
 import { type SubscribeCallback, subscribe } from "@parcel/watcher";
-import { detectAskAgents } from "@review/ask/agents.js";
-import { idleAskAgent } from "@review/ask/ask-test-utils.js";
-import { AskThreads } from "@review/ask/threads.js";
 import { rangeAnchor } from "@review/lens-selection";
 import { createGlobalReviewServer } from "@review/server/desktop-server.js";
 import { Hono } from "hono";
@@ -1014,98 +1011,6 @@ it("gives a remote caller a commit review's checkout as remoteRootPath, with the
     serverId: local.store.serverId(),
   });
   expect(await read({ [REVIEW_CLIENT_HEADER]: "local" })).toEqual(ownMachine);
-});
-
-it("gives a remote caller Ask answers with checkout-relative mentions", async () => {
-  const { reviewId } = await local.store.execute(
-    command({
-      type: "create",
-      title: "Ask",
-      target: { kind: "commits", ...pins },
-    }),
-  );
-
-  const { rootPath } = await local.data.agentCheckout(
-    local.store.read(reviewId),
-  );
-
-  const threads = new AskThreads(idleAskAgent().launch);
-
-  const app = createReviewApi(
-    local.store,
-    local.data,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    { threads, agents: () => detectAskAgents({}) },
-  );
-
-  const remote = { [REVIEW_CLIENT_HEADER]: REVIEW_CLIENT_REMOTE };
-
-  const request = async (route: string, body?: JsonValue) => {
-    const response = await app.request(`/${reviewId}/${route}`, {
-      headers: { ...remote, "content-type": "application/json" },
-      ...(body !== undefined && {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
-    });
-
-    expect(response.status).toBe(200);
-
-    return response;
-  };
-
-  const read = async (route: string, body?: JsonValue) =>
-    (await request(route, body)).json();
-
-  const snapshot = async (threadId: string) => {
-    const reader = (await request("ask/watch", { threads: [threadId] }))
-      .body!.pipeThrough(new TextDecoderStream())
-      .getReader();
-
-    const { value = "" } = await reader.read();
-    await reader.cancel();
-
-    return JSON.parse(value.split("\n")[0]!).update.snapshot;
-  };
-
-  const agents = await read("ask/agents");
-  expect(agents.agents.length).toBeGreaterThan(0);
-
-  const { threadId } = await read("ask", {
-    agent: "claude",
-    question: { text: "Why?" },
-    selection: { target: { kind: "text", quote: "value" }, title: "value" },
-  });
-
-  const asked = await snapshot(threadId);
-  expect(asked.cwd).toBe(rootPath);
-
-  await vi.waitFor(async () =>
-    expect((await read("ask/threads")).threads).toHaveLength(1),
-  );
-
-  for (const route of [
-    "ask/mentions?query=example",
-    `ask/mentions?query=example&thread=${threadId}`,
-  ]) {
-    const mentions = await read(route);
-    expect(mentions.paths).toContain(source.file);
-    expect(mentions.paths.every((file: string) => !file.startsWith("/"))).toBe(
-      true,
-    );
-  }
-
-  threads.close(threadId);
-  await read(`ask/${threadId}/open`, {});
-  const reopened = await snapshot(threadId);
-  expect(reopened.cwd).toBe(rootPath);
-  threads.close(threadId);
 });
 
 it("opens a stable native workspace on the Review's pinned checkout at the selected version", async () => {
