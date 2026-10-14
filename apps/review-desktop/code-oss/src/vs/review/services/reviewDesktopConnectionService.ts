@@ -37,7 +37,6 @@ import {
 	REVIEW_SERVER_STARTUP_TIMEOUT_MS,
 	reconnectUntilAborted,
 } from "../common/reviewReconnect.js";
-import { parseRemoteLanguageEndpoint } from "./remote/reviewWindowAuthorityResolver.js";
 
 const REVIEW_TUTORIAL_AUTOPREPARE_SUPPRESSED_KEY = "review.tutorial.autoPrepareSuppressed.v1";
 
@@ -259,7 +258,7 @@ export class ReviewDesktopConnectionService extends Disposable implements IRevie
 	}
 
 	async getRemoteLanguageEndpoint(serverId: string): Promise<ReviewRemoteLanguageEndpoint | undefined> {
-		return parseRemoteLanguageEndpoint(await this.mainProcessService.getChannel(REVIEW_DESKTOP_CHANNEL).call("getRemoteLanguageEndpoint", serverId));
+		return this.mainProcessService.getChannel(REVIEW_DESKTOP_CHANNEL).call("getRemoteLanguageEndpoint", serverId);
 	}
 
 	async installRemoteHost(alias: string): Promise<void> {

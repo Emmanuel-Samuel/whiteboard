@@ -123,8 +123,8 @@ test("a window waiting on a machine sees its alias and state, or connecting whil
 	assert.deepEqual(remoteHostState("s1", [
 		{ alias: "copy", serverId: "s1", state: "duplicate" },
 		{ alias: "devbox", serverId: "s1", state: "online" },
-	]), { alias: "devbox", state: "online" });
-	assert.deepEqual(remoteHostState("s1", [{ alias: "devbox", serverId: "s1", state: "offline" }]), { alias: "devbox", state: "offline" });
+	]), { alias: "devbox", serverId: "s1", state: "online" });
+	assert.deepEqual(remoteHostState("s1", [{ alias: "devbox", serverId: "s1", state: "offline", detail: "gone" }]), { alias: "devbox", serverId: "s1", state: "offline", detail: "gone" });
 	assert.deepEqual(remoteHostState("s1", [{ alias: "new", state: "connecting" }]), { state: "connecting" });
 	assert.equal(remoteHostState("s1", [{ alias: "gone", state: "unreachable" }, { alias: "other", serverId: "s2", state: "connecting" }]), undefined);
 });

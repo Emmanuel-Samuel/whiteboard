@@ -13,6 +13,7 @@ import {
 	type ResolverResult,
 	WebSocketRemoteConnection,
 } from "../../../platform/remote/common/remoteAuthorityResolver.js";
+import type { ReviewGatewayHostState } from "../../common/reviewProtocol.js";
 import type { ReviewRemoteLanguageEndpoint } from "../reviewDesktopConnectionService.js";
 import { isReviewRemoteAuthority, override, reviewRemoteServerId } from "./reviewRemoteAuthority.js";
 
@@ -21,15 +22,7 @@ export const REMOTE_WINDOW_RESOLVE_WAIT_MS = 60_000;
 
 export interface ReviewWindowHosts {
 	endpoint(serverId: string): Promise<ReviewRemoteLanguageEndpoint | undefined>;
-	state(serverId: string): Promise<{ alias?: string; state: string } | undefined>;
-}
-
-export function parseRemoteLanguageEndpoint(endpoint: unknown): ReviewRemoteLanguageEndpoint | undefined {
-	if (typeof endpoint !== "object" || endpoint === null) return undefined;
-	const { host, port, connectionToken } = endpoint as Record<string, unknown>;
-	return typeof host === "string" && Number.isInteger(port) && typeof connectionToken === "string"
-		? { host, port: port as number, connectionToken }
-		: undefined;
+	state(serverId: string): Promise<({ alias?: string } & Pick<ReviewGatewayHostState, "state" | "detail">) | undefined>;
 }
 
 /** Reloads a window that could not reach its host, once the host's forward answers. */
@@ -51,13 +44,8 @@ export function reloadWhenOnline(hosts: ReviewWindowHosts, serverId: string, rel
 
 export function reviewWindowHosts(channel: IChannel): ReviewWindowHosts {
 	return {
-		endpoint: async (serverId) => parseRemoteLanguageEndpoint(await channel.call("getRemoteLanguageEndpoint", serverId)),
-		state: async (serverId) => {
-			const state: unknown = await channel.call("getRemoteHostState", serverId);
-			if (typeof state !== "object" || state === null) return undefined;
-			const { alias, state: name } = state as Record<string, unknown>;
-			return typeof name === "string" ? { alias: typeof alias === "string" ? alias : undefined, state: name } : undefined;
-		},
+		endpoint: (serverId) => channel.call("getRemoteLanguageEndpoint", serverId),
+		state: (serverId) => channel.call("getRemoteHostState", serverId),
 	};
 }
 
