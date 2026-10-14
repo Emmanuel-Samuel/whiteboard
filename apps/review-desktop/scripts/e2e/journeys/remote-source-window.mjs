@@ -458,7 +458,7 @@ async function journey(ctx) {
   await until(() => other.isClosed(), "the second Source window to close");
 
   // 11–12. The host freezes: the window's status bar says so, then names the host again.
-  const offlineText = `${alias} — offline, reconnecting…`;
+  const offlineText = `${alias} offline`;
 
   let thaw = await freeze();
   const paused = Date.now();
