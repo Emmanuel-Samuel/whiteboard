@@ -139,6 +139,10 @@ export async function setupServerServices(connectionToken: ServerConnectionToken
 		// Whiteboard: the client always opens this channel; telemetry is cut.
 		socketServer.registerChannel('telemetry', new NullTelemetryChannel());
 
+		// Whiteboard: extension management is cut; Source windows list no extensions.
+		socketServer.registerChannel('extensions', new NoExtensionsChannel());
+		socketServer.registerChannel('extensionGalleryManifest', new NoExtensionsChannel());
+
 		const remoteExtensionsScanner = new RemoteExtensionsScannerService(userDataProfilesService, extensionsScannerService, logService);
 		socketServer.registerChannel(RemoteExtensionsScannerChannelName, new RemoteExtensionsScannerChannel(remoteExtensionsScanner, (ctx: RemoteAgentConnectionContext) => getUriTransformer(ctx.remoteAuthority)));
 
@@ -153,6 +157,15 @@ export async function setupServerServices(connectionToken: ServerConnectionToken
 
 class NullTelemetryChannel implements IServerChannel<RemoteAgentConnectionContext> {
 	async call<T>(): Promise<T> { return undefined as T; }
+	listen<T>(): Event<T> { return Event.None; }
+}
+
+class NoExtensionsChannel implements IServerChannel<RemoteAgentConnectionContext> {
+	async call<T>(_: RemoteAgentConnectionContext, command: string): Promise<T> {
+		if (command === 'getInstalled') { return [] as T; }
+		if (command === 'setExtensionGalleryManifest') { return undefined as T; }
+		throw new Error(`Extensions on a Whiteboard remote are not managed from a Source window (${command}).`);
+	}
 	listen<T>(): Event<T> { return Event.None; }
 }
 
