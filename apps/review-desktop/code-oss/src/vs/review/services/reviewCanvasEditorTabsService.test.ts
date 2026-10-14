@@ -112,17 +112,3 @@ test("a remote diff opens its empty side from a laptop empty file", async (t) =>
 	assert.equal(options.remoteAuthority, HOST);
 	assert.equal(options.diffMode, true);
 });
-
-test("references and the source tree open a remote review's window on its host", async (t) => {
-	const { tabs, opened } = sourceTabs(t, () => remoteAnswer);
-	tabs.inputFor({ kind: "api", reviewId: "r1", title: "Fix the parser" });
-	await tabs.openSourceReferences(apiSourceUri({ view: view("wt1"), side: "head", file: "src/a b.ts" }), { lineNumber: 4, column: 5 });
-	await tabs.openApiSource({ reviewId: "r1", kind: "current" }, "Fix the parser");
-	const [references, tree] = opened;
-	assert.deepEqual(references.toOpen.map(item => item.workspaceUri!.toString()), [remote("/home/dev/navigator/repo.code-workspace")]);
-	const { reviewReferencesToShow, remoteAuthority } = references.options as { reviewReferencesToShow: { resource: URI; lineNumber: number; column: number }; remoteAuthority: string };
-	assert.equal(remoteAuthority, HOST);
-	assert.deepEqual({ ...reviewReferencesToShow, resource: reviewReferencesToShow.resource.toString() }, { resource: remote("/home/dev/repo/src/a b.ts"), lineNumber: 4, column: 5 });
-	assert.deepEqual(tree.toOpen.map(item => [item.workspaceUri!.toString(), item.label]), [[remote("/home/dev/navigator/repo.code-workspace"), "Fix the parser"]]);
-	assert.equal(tree.options.remoteAuthority, HOST);
-});

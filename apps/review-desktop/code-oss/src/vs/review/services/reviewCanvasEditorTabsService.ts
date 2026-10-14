@@ -32,7 +32,6 @@ import { IReviewDesktopConnectionService, reviewResponseError } from "./reviewDe
 
 type NavigatorAnswer = { workspacePath: string; filePath?: string } | ReviewRemoteNavigatorAnswer;
 
-/** A remote answer's host paths open on its server's `whiteboard+` authority. */
 function navigatorPaths(answer: NavigatorAnswer): { uri: (path: string) => URI; remote: { remoteAuthority?: string } } {
 	if (!("serverId" in answer)) return { uri: URI.file, remote: {} };
 	const authority = reviewRemoteAuthority(answer.serverId);

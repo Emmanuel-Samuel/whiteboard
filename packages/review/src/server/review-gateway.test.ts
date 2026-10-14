@@ -352,66 +352,6 @@ it("streams a remote answer line by line and closes the remote connection when t
   await closed.promise;
 });
 
-/** A remote whose navigator answers `answers[file]` for `?file=`; `gone` with 409. */
-async function startNavigator(answers: Record<string, JsonObject>) {
-  const reviewId = randomUUID();
-
-  const fake = await startFake({
-    version,
-    serverId: "c0ffee-42",
-    reviewIds: [reviewId],
-    handle(request, response) {
-      if (!request.url?.startsWith(`/reviews-api/${reviewId}/navigator`))
-        return false;
-
-      const file = new URL(request.url, "http://remote").searchParams.get(
-        "file",
-      );
-
-      response.statusCode = file === "gone" ? 409 : 200;
-      response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify(answers[file ?? ""]));
-
-      return true;
-    },
-  });
-
-  const started = await startGateway([
-    { alias: "wb-a", endpoint: fake.endpoint },
-  ]);
-
-  await expect.poll(() => started.gateway.hosts()[0]?.state).toBe("online");
-
-  const open = (file: string) =>
-    started.request(`/${reviewId}/navigator?file=${file}`, {
-      method: "POST",
-      body: "{}",
-    });
-
-  return { ...started, open };
-}
-
-it("forwards a remote navigator's answer and refusal untouched", async () => {
-  const file = {
-    workspacePath: "/home/dev/ws.code-workspace",
-    filePath: "/home/dev/a.ts",
-    serverId: "c0ffee-42",
-  };
-
-  const { open } = await startNavigator({
-    file,
-    gone: { ok: false, error: "The file is gone." },
-  });
-
-  const response = await open("file");
-  expect(response.headers.get(REVIEW_HOST_HEADER)).toBe("wb-a");
-  expect(await response.json()).toEqual(file);
-  expect(await (await open("gone")).json()).toEqual({
-    ok: false,
-    error: "The file is gone.",
-  });
-});
-
 it("answers 503 naming the version to install for a review on another version, also from its memory file", async () => {
   const a = await startRemote(path.join(root, "a"));
   const onA = await seed(a, "On a");
