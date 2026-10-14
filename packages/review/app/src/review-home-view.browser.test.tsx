@@ -1,6 +1,7 @@
 import type {
   ReviewApiSummary,
   ReviewGatewayHostState,
+  ReviewRemoteHostActions,
 } from "@dev.fast/review-protocol";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -905,23 +906,23 @@ describe("Home interactions", () => {
     expect(titles()).toEqual(["One"]);
   });
   it.each([
-    ["offline", "offline"],
-    ["connecting", "connecting"],
-    ["not-installed", "not installed"],
+    ["offline", "offline", "devbox offline"],
+    ["connecting", "connecting", "Connecting to devbox…"],
+    ["not-installed", "not installed", "Whiteboard not installed on devbox"],
   ] as const)(
     "draws a %s host's review as unavailable, and opening it shows the host's detail",
-    async (hostState, words) => {
+    async (hostState, words, label) => {
       const onOpen = vi.fn<(review: ReviewApiSummary) => void>();
 
       await render([remote("Remote", { hostState })], {
         onOpen,
-        hostStates: async () => [
+        remoteHosts: hostsOf(async () => [
           {
             alias: "devbox",
             state: hostState,
             detail: "devbox is offline: it did not answer within 3 seconds.",
           },
-        ],
+        ]),
       });
 
       const row = container.querySelector("[data-home-row]")!;
@@ -933,27 +934,31 @@ describe("Home interactions", () => {
         button("Open Remote")
           .querySelector("span[title]")!
           .getAttribute("title"),
-      ).toBe(`devbox is ${words}`);
+      ).toBe(label);
       await click("Open Remote");
       expect(onOpen).not.toHaveBeenCalled();
-      expect(alert()).toBe(
-        "devbox is offline: it did not answer within 3 seconds.",
+      await vi.waitFor(() =>
+        expect(alert()).toContain(
+          "devbox is offline: it did not answer within 3 seconds.",
+        ),
       );
     },
   );
-  it("says only the state while the host's detail loads or when it has none", async () => {
+  it("says the state and offers its next step while the host's detail loads or when it has none", async () => {
     const answer = Promise.withResolvers<ReviewGatewayHostState[]>();
     await render([remote("Remote", { hostState: "offline" })], {
-      hostStates: () => answer.promise,
+      remoteHosts: hostsOf(() => answer.promise),
     });
     await click("Open Remote");
-    expect(alert()).toBe("devbox is offline.");
+    expect(alert()).toContain("devbox offline.");
+    expect(button("Retry")).toBeTruthy();
     await act(async () =>
       answer.resolve([{ alias: "devbox", state: "offline" }]),
     );
-    expect(alert()).toBe("devbox is offline.");
+    expect(alert()).toContain("devbox offline.");
+    expect(button("Retry")).toBeTruthy();
   });
-  it("keeps the message of the last unavailable review opened, and drops it when the list changes", async () => {
+  it("keeps the message of the last unavailable review opened, and opens that review once its host is back", async () => {
     const answers = [
       Promise.withResolvers<ReviewGatewayHostState[]>(),
       Promise.withResolvers<ReviewGatewayHostState[]>(),
@@ -972,14 +977,18 @@ describe("Home interactions", () => {
       { alias: "other", state: "offline" as const, detail: "other detail" },
     ];
 
-    await render(reviews, { hostStates });
+    const onOpen = vi.fn<(review: ReviewApiSummary) => void>();
+    const remoteHosts = hostsOf(hostStates);
+    await render(reviews, { onOpen, remoteHosts });
     await click("Open One");
     await click("Open Two");
     await act(async () => answers[1]!.resolve(states));
     await act(async () => answers[0]!.resolve(states));
-    expect(alert()).toBe("other detail");
-    await render([{ ...reviews[1]!, hostState: "online" }], { hostStates });
+    expect(alert()).toBe("other detailRetry");
+    const back = { ...reviews[1]!, hostState: "online" as const };
+    await render([reviews[0]!, back], { onOpen, remoteHosts });
     expect(alert()).toBeUndefined();
+    expect(onOpen).toHaveBeenCalledExactlyOnceWith(back);
   });
   it("draws an online remote review as available", async () => {
     const onOpen = vi.fn<(review: ReviewApiSummary) => void>();
@@ -993,6 +1002,17 @@ describe("Home interactions", () => {
     await click("Open Remote");
     expect(onOpen).toHaveBeenCalledWith(review);
   });
+
+  function hostsOf(
+    states: () => Promise<ReviewGatewayHostState[]>,
+  ): ReviewRemoteHostActions {
+    return {
+      states,
+      retry: async () => {},
+      install: async () => {},
+      openSettings: async () => {},
+    };
+  }
 
   function alert() {
     return container.querySelector('[role="alert"]')?.textContent;

@@ -3,26 +3,22 @@ import { Checkbox } from "@canvas/ui/checkbox";
 import { TextField } from "@canvas/ui/text-field";
 import {
   REVIEW_CLI_INSTALL_TARGET_LABELS,
-  type ReviewGatewayHostState,
   type ReviewRemoteAgent,
   type ReviewRemoteHostsSettings,
+  reviewHostStatus,
 } from "@dev.fast/review-protocol";
 import * as stylex from "@stylexjs/stylex";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { CopyableText } from "./copy-text";
+import {
+  ACTION_WORDS,
+  useHostAction,
+  useRemoteHostStates,
+  useSettingsReveal,
+} from "./remote-host-state";
 import { settingsStyles as styles } from "./settings-styles";
 import { tokens } from "./tokens.stylex";
-
-const STATES_EVERY_MS = 3000;
-
-const RETRIED = new Set<ReviewGatewayHostState["state"]>([
-  "auth-failed",
-  "incompatible",
-  "not-installed",
-  "unreachable",
-  "unsupported",
-]);
 
 export function RemoteHostsSection({
   hosts,
@@ -30,46 +26,21 @@ export function RemoteHostsSection({
   hosts: ReviewRemoteHostsSettings;
 }) {
   const [configured, setConfigured] = useState(hosts.configured);
-  const [states, setStates] = useState<readonly ReviewGatewayHostState[]>();
+  const states = useRemoteHostStates(hosts);
   const [suggestions, setSuggestions] = useState<readonly string[]>([]);
   const [alias, setAlias] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [removing, setRemoving] = useState<string>();
   const [uninstall, setUninstall] = useState(false);
+  const section = useRef<HTMLElement>(null);
+  useSettingsReveal(section);
 
   useEffect(() => {
     void hosts
       .suggestions()
       .then(setSuggestions)
       .catch(() => undefined);
-  }, [hosts]);
-
-  useEffect(() => {
-    let live = true;
-    let reading = false;
-
-    const read = () => {
-      if (document.hidden || reading) return;
-      reading = true;
-      void hosts
-        .states()
-        .then((next) => {
-          if (live) setStates(next);
-        })
-        .catch(() => undefined)
-        .finally(() => {
-          reading = false;
-        });
-    };
-
-    read();
-    const timer = setInterval(read, STATES_EVERY_MS);
-
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
   }, [hosts]);
 
   const save = async (next: string[]) => {
@@ -113,10 +84,15 @@ export function RemoteHostsSection({
   };
 
   return (
-    <section {...stylex.props(styles.section)} aria-label="Remote hosts">
+    <section
+      ref={section}
+      {...stylex.props(styles.section)}
+      aria-label="Remote hosts"
+    >
       <h2 {...stylex.props(styles.sectionLabel)}>Remote hosts</h2>
       {configured.map((name) => {
         const state = states?.find((host) => host.alias === name);
+        const failed = !!state && !!reviewHostStatus(state).action;
 
         return (
           <div key={name} {...stylex.props(styles.row)} data-remote-host="">
@@ -124,8 +100,13 @@ export function RemoteHostsSection({
               <span {...stylex.props(styles.rowLabel)}>{name}</span>
               {states ? (
                 <Detail
-                  failed={state !== undefined && RETRIED.has(state.state)}
-                  text={`${(state?.state ?? "connecting").replace("-", " ")}${state?.detail ? ` · ${state.detail}` : ""}`}
+                  failed={failed}
+                  text={
+                    state?.detail ??
+                    reviewHostStatus(
+                      state ?? { alias: name, state: "connecting" },
+                    ).status
+                  }
                 />
               ) : null}
               {state?.state === "online" ? (
@@ -162,22 +143,10 @@ export function RemoteHostsSection({
             </div>
             <div {...stylex.props(styles.rowControl, local.actions)}>
               {state?.declined ? (
-                <Button
-                  aria-label={`Install ${name}`}
-                  onClick={() =>
-                    void hosts.install(name).catch(() => undefined)
-                  }
-                >
-                  Install
-                </Button>
+                <HostStep hosts={hosts} alias={name} action="install" />
               ) : null}
-              {state && RETRIED.has(state.state) ? (
-                <Button
-                  aria-label={`Retry ${name}`}
-                  onClick={() => void hosts.retry(name).catch(() => undefined)}
-                >
-                  Retry
-                </Button>
+              {failed ? (
+                <HostStep hosts={hosts} alias={name} action="retry" />
               ) : null}
               <Button
                 aria-label={`Remove ${name}`}
@@ -348,6 +317,37 @@ function RemoteHostAgents({
       {result ? (
         <Detail role="status" failed={result.failed} text={result.text} />
       ) : null}
+    </>
+  );
+}
+
+function HostStep({
+  hosts,
+  alias,
+  action,
+}: {
+  hosts: ReviewRemoteHostsSettings;
+  alias: string;
+  action: "retry" | "install";
+}) {
+  const { run, pending, failure } = useHostAction(hosts, alias);
+  const label = ACTION_WORDS[action];
+
+  return (
+    <>
+      {failure ? (
+        <span role="alert" {...stylex.props(styles.error)}>
+          {failure}
+        </span>
+      ) : null}
+      <Button
+        aria-label={`${label} ${alias}`}
+        aria-busy={pending || undefined}
+        disabled={pending}
+        onClick={() => run(action)}
+      >
+        {label}
+      </Button>
     </>
   );
 }
