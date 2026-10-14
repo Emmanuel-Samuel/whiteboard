@@ -223,25 +223,20 @@ login shell (`~/.profile` or your shell's own start-up file is enough):
 
 ## Source windows
 
-"Open file", the source tree and Ask's file links open a Source window bound
-to the host. The window shows the host's checkout read-only, with the
-explorer, quick open, text search and the language features above. Its title
-is `<review title> — Source — Whiteboard`.
+"Open file", the source tree and Ask's file links open a read-only Source
+window on the host, with search and language features.
 
-When the host stops answering, the status bar reads `<alias> — offline,
-reconnecting…` within about 15 seconds, and a warning says the window
-reconnects when the host is back. A window restored while its host is down
-shows the same. The window reconnects by itself, usually within a few seconds
-of the host returning, and the entry goes back to the alias.
+When the host stops answering, the status bar says so. The window reconnects
+when the host is back.
 
 Not available in a Source window:
 
 - Terminals and source control.
-- Watching on musl hosts such as Alpine. The explorer refreshes when the
-  window gets focus. On glibc hosts it updates as files change.
+- Live file updates on musl hosts such as Alpine. The explorer refreshes when
+  the window gets focus.
 
-Each Source window runs its own extension host on the host, about 130 MB with
-TypeScript. Close windows you are done with.
+Each Source window runs its own extension host on the host. Close the ones you
+are done with.
 
 ## Not available for remote reviews yet
 
