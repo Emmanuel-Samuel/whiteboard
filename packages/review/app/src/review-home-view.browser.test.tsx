@@ -950,11 +950,13 @@ describe("Home interactions", () => {
       remoteHosts: hostsOf(() => answer.promise),
     });
     await click("Open Remote");
-    expect(alert()).toBe("devbox offline.Retry");
+    expect(alert()).toContain("devbox offline.");
+    expect(button("Retry")).toBeTruthy();
     await act(async () =>
       answer.resolve([{ alias: "devbox", state: "offline" }]),
     );
-    expect(alert()).toBe("devbox offline.Retry");
+    expect(alert()).toContain("devbox offline.");
+    expect(button("Retry")).toBeTruthy();
   });
   it("keeps the message of the last unavailable review opened, and opens that review once its host is back", async () => {
     const answers = [
