@@ -7,6 +7,7 @@ import {
   homeRepositories,
   matchesHomeFilters,
   repositoryIdentity,
+  reviewMetadataPills,
   sortHomeReviews,
   toggleHomeWorktree,
   worktreeKey,
@@ -76,6 +77,28 @@ describe("Home model", () => {
 
     for (const query of ["1091", "#1091"])
       expect(matchesHomeFilters(board, defaultHomeFilters, query)).toBe(false);
+  });
+  it("shows a review's PR in place of its worktree", () => {
+    const pills = reviewMetadataPills(
+      {
+        ...board,
+        origin: {
+          pullRequestNumber: 1091,
+          pullRequestUrl: "https://github.com/devdotfast/whiteboard/pull/1091",
+        },
+      },
+      defaultHomeFilters,
+    );
+
+    expect(pills.map((pill) => pill.facet)).toEqual(["pullRequest"]);
+  });
+  it("shows no worktree for a shared import", () => {
+    expect(
+      reviewMetadataPills(
+        { ...board, origin: {}, shared: {} },
+        defaultHomeFilters,
+      ),
+    ).toEqual([]);
   });
   it("groups remote worktrees together without conflating same-name local repositories", () => {
     const imported = {
