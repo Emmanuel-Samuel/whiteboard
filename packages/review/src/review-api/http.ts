@@ -739,15 +739,20 @@ export function createReviewApi(
         })
         .parse(context.req.query());
 
+      const answer = await data.navigatorWorkspace(
+        readReview(context.req.param("id"), input.version),
+        {
+          ...input,
+          empty: input.empty === "true",
+          anchor: queryAnchor(input),
+        },
+      );
+
       return context.json(
-        await data.navigatorWorkspace(
-          readReview(context.req.param("id"), input.version),
-          {
-            ...input,
-            empty: input.empty === "true",
-            anchor: queryAnchor(input),
-          },
-        ),
+        context.req.header(REVIEW_CLIENT_HEADER) === REVIEW_CLIENT_REMOTE &&
+          input.empty === "true"
+          ? { workspacePath: answer.workspacePath, emptySide: true }
+          : answer,
       );
     });
     app.get("/:id/tree", async (context) => {
