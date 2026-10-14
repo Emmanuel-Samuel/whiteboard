@@ -149,9 +149,6 @@ export function createGlobalReviewServer(
   const relay =
     input.relay ?? new GlobalReviewDesktopVerbRelay({ maxClients: 1 });
 
-  // Ask sessions get this Desktop's own CLI, pinned to this instance so
-  // another running Whiteboard never answers it: its MCP server, or
-  // `whiteboard api` from the shell for an agent whose model would not get it.
   const askTools = cliAskTools(() => discovery.cliPath, {
     name: REVIEW_INSTANCE_ENV,
     value: identity.key,

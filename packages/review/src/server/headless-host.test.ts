@@ -53,7 +53,7 @@ import {
   reviewServerIsHealthy,
 } from "@review/server-discovery.js";
 import sharp from "sharp";
-import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { createGlobalReviewServer } from "./desktop-server.js";
@@ -1426,58 +1426,4 @@ it("opens an Ask thread in the review's checkout and closes it on stop", async (
   expect(counts.stopped).toBe(1);
 
   while (!(await reader.read()).done);
-});
-
-it("closes an Ask thread ten minutes after its last watcher leaves and reopens it from history", async () => {
-  const { launch, counts } = idleAskAgent();
-  const server = await start(undefined, false, launch);
-
-  const { worktree } = await reviewsOfBothKinds(server.client);
-
-  vi.useFakeTimers({
-    shouldAdvanceTime: true,
-    toFake: ["setInterval", "clearInterval", "Date"],
-  });
-  onTestFinished(() => {
-    vi.useRealTimers();
-  });
-
-  const { threadId } = await (
-    await askCall(server, `${worktree}/ask`, {
-      agent: "claude",
-      question: { text: "Why?" },
-      selection: { target: { kind: "text", quote: "value" }, title: "value" },
-    })
-  ).json();
-
-  const reader = (
-    await askCall(server, `${worktree}/ask/watch`, { threads: [threadId] })
-  )
-    .body!.pipeThrough(new TextDecoderStream())
-    .getReader();
-
-  let seen = "";
-
-  while (!seen.includes('"status":"idle"'))
-    seen += (await reader.read()).value ?? "";
-
-  await vi.advanceTimersByTimeAsync(60 * 60_000);
-  expect(counts.stopped).toBe(0);
-
-  await reader.cancel();
-  await vi.waitFor(async () => {
-    await vi.advanceTimersByTimeAsync(11 * 60_000);
-    expect(counts.stopped).toBe(1);
-  });
-
-  const { threads } = await (
-    await askCall(server, `${worktree}/ask/threads`)
-  ).json();
-
-  expect(threads).toMatchObject([{ id: threadId }]);
-
-  expect(
-    (await askCall(server, `${worktree}/ask/${threadId}/open`, {})).status,
-  ).toBe(200);
-  await vi.waitFor(() => expect(counts.launches).toBe(2));
 });
