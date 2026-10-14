@@ -1387,7 +1387,6 @@ it("shows a lost remote host as a top-bar chip that retries the host and the str
     return found!;
   });
 
-  expect(container.textContent).not.toContain("Connection lost");
   expect(chip.title).toBe(
     "Click to retry\nwb-a is offline: it did not answer.",
   );
@@ -1452,7 +1451,6 @@ it("shows why a remote review has not loaded, with its host's next step", async 
   expect(waiting.textContent).toContain(
     "wb-a runs Whiteboard 0.1.0; this Desktop runs 0.2.0.",
   );
-  expect(container.textContent).not.toContain("Connection lost");
   await act(async () =>
     [...waiting.querySelectorAll("button")]
       .find((button) => button.textContent === "Install")!

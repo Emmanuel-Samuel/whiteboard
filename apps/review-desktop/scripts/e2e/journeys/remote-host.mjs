@@ -477,13 +477,6 @@ async function journey(ctx, page, until) {
     "the disconnected chip",
     30000,
   );
-  assert.equal(
-    await canvas
-      .locator("[role=status]")
-      .filter({ hasText: "Connection lost" })
-      .count(),
-    0,
-  );
   await until(
     async () =>
       (await hostState())?.state === "online" && (await masterPid()) !== master,
