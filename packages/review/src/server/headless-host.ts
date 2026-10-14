@@ -1,12 +1,18 @@
+import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { once } from "node:events";
+import { existsSync } from "node:fs";
 import { mkdir, realpath, rm } from "node:fs/promises";
 import { createServer } from "node:http";
+import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { isObjectValue } from "@dev.fast/json";
 import { withFileLock, writePrivateJsonAtomic } from "@dev.fast/trace-core";
+import type { AskAgentLauncher } from "@review/ask/agents.js";
+import { cliAskTools } from "@review/ask/threads.js";
 import { desktopUsesHome } from "@review/desktop-discovery.js";
+import { findReviewPackageRoot } from "@review/package-paths.js";
 import { openReviewProfile } from "@review/review-api/profile.js";
 import {
   DESKTOP_TAKEOVER_SIGNAL,
@@ -40,6 +46,7 @@ interface HeadlessServerInput {
   /** The CLI's instance, already on the `headless` surface. */
   telemetry?: Pick<ReviewTelemetryCapture, "captureUiEvent">;
   onReady(discovery: ReviewServerDiscovery): void;
+  launchAskAgent?: AskAgentLauncher;
 }
 
 export class HeadlessServerBusyError extends Error {}
@@ -114,6 +121,60 @@ export async function takeOverServerHome<T>(
   }
 }
 
+const LOGIN_PATH_TIMEOUT_MS = 4_000;
+
+/** Started over ssh, this server has sshd's PATH; agents are on the login
+ * shell's. */
+async function agentEnv(): Promise<NodeJS.ProcessEnv> {
+  const login = process.env.SHELL && (await loginPath(process.env.SHELL));
+
+  return {
+    ...process.env,
+    PATH: [login, process.env.PATH, path.dirname(process.execPath)]
+      .filter(Boolean)
+      .join(path.delimiter),
+  };
+}
+
+function loginPath(shell: string) {
+  return new Promise<string | undefined>((resolve) => {
+    const child = spawn(
+      shell,
+      ["-lic", 'printf "\\nWHITEBOARD-PATH=%s\\n" "$PATH"'],
+      { detached: true, stdio: ["ignore", "pipe", "ignore"] },
+    );
+
+    let output = "";
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => (output += chunk));
+
+    const timer = setTimeout(() => {
+      try {
+        process.kill(-child.pid!, "SIGKILL");
+      } catch {}
+
+      resolve(undefined);
+    }, LOGIN_PATH_TIMEOUT_MS);
+
+    child.once("error", () => {
+      clearTimeout(timer);
+      resolve(undefined);
+    });
+    child.once("close", () => {
+      clearTimeout(timer);
+
+      const found = output
+        .replaceAll("\r", "")
+        .split("\n")
+        .findLast((line) => line.startsWith("WHITEBOARD-PATH="))
+        ?.slice("WHITEBOARD-PATH=".length);
+
+      resolve(found?.startsWith("/") ? found : undefined);
+    });
+  });
+}
+
 async function serve(input: HeadlessServerInput) {
   if (input.signal.aborted) return;
 
@@ -139,7 +200,13 @@ async function serve(input: HeadlessServerInput) {
 
   const relay = new GlobalReviewDesktopVerbRelay();
 
-  const { app, api } = createWhiteboardCore({
+  const cliPath = path.join(
+    findReviewPackageRoot(import.meta.url),
+    "dist",
+    "cli.js",
+  );
+
+  const { app, api, close } = createWhiteboardCore({
     profile: local,
     relay,
     token: discovery.token,
@@ -148,6 +215,14 @@ async function serve(input: HeadlessServerInput) {
     // The scratchpad is the laptop's alone, even with a Desktop attached.
     scratchpad: () => false,
     status: () => ({ key: "headless", home: input.stateDir }),
+    ask: {
+      tools: cliAskTools(() => (existsSync(cliPath) ? cliPath : undefined), {
+        name: "DEV_REVIEW_SERVER_DIR",
+        value: input.stateDir,
+      }),
+      launch: input.launchAskAgent,
+      env: agentEnv(),
+    },
   });
 
   app.route("/reviews-api", api);
@@ -177,6 +252,8 @@ async function serve(input: HeadlessServerInput) {
         input.signal.addEventListener("abort", () => resolve(), { once: true });
     });
   } finally {
+    close();
+
     // Watch streams may live forever. Drain ordinary requests, then bound shutdown.
     const forceClose = setTimeout(() => server.closeAllConnections(), 5_000);
     forceClose.unref();

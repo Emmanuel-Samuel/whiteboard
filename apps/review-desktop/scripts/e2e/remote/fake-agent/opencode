@@ -1,0 +1,10 @@
+#!/bin/sh
+# wb-test: stands in for OpenCode. `opencode acp` speaks ACP; anything else prints a version.
+case "$1" in
+  acp)
+    node=$(command -v node)
+    [ -n "$node" ] || for candidate in /opt/whiteboard/whiteboard-remote/bin/node "$HOME"/.dev/whiteboard-remote/versions/*/bin/node; do [ -x "$candidate" ] && node=$candidate; done
+    [ -x "$node" ] || { echo "opencode (wb-test): no node on PATH or in a Whiteboard install" >&2; exit 127; }
+    exec "$node" "${0%/*}/acp-agent.mjs" ;;
+  *) echo "opencode 0.0.0-wb-test" ;;
+esac
