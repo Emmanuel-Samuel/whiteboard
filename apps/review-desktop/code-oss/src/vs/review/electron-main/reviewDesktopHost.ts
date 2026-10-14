@@ -263,10 +263,10 @@ export class ReviewDesktopHost extends Disposable {
     return states && manager.languageEndpoint(serverId, states).catch(() => undefined);
   }
 
-  async getRemoteHostState(serverId: string) {
+  async getRemoteHostState(serverId: string, last?: string) {
     const manager = this.remoteHosts;
     const states = manager && (await this.remoteHostStates());
-    return states && manager.hostState(serverId, states);
+    return states && manager.hostState(serverId, states, last);
   }
 
   private async remoteHostStates(): Promise<ReviewGatewayHostState[] | undefined> {

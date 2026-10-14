@@ -1,3 +1,7 @@
+import type {
+  ReviewHostStatus,
+  ReviewRemoteHostActions,
+} from "@dev.fast/review-protocol";
 import type { AgentSelection } from "@review/agent-selection";
 import {
   type AskAgentId,
@@ -51,10 +55,12 @@ import { askPanelStyles } from "./ask-styles";
 import { useLatest, useThread } from "./ask-thread-stream";
 import { AskAgentTurn, AskWorking, turns } from "./ask-turn";
 import { canvasQueryKeys } from "./canvas-query";
+import { useHostActionButton } from "./connection-chip";
 import { controlStyles } from "./controls-styles";
 import { formatRelativeTime } from "./format";
 import { useReviewSession } from "./host/review-session";
 import { ArrowUpIcon, ImageIcon, LockIcon } from "./icons";
+import { useReviewHostDown } from "./remote-host-state";
 import { useAskKey, useOptionalReviewPanelStore } from "./review-panel";
 import type { AskPresence, AskReport } from "./review-panel-model";
 import { fontSize, radius } from "./scale.stylex";
@@ -110,6 +116,8 @@ export function AskPanelContent({
   const [threadId, setThreadId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
+  const [again, setAgain] = useState<() => void>();
+  const down = useReviewHostDown(session.review);
   // Choices for a question not yet asked; a thread says its own.
   const [picks, setPicks] = useState<AskPicks>({});
   const [bypassPick, setBypassPick] = useState<boolean>();
@@ -234,6 +242,7 @@ export function AskPanelContent({
   const canAsk =
     !session.review?.trashedAt &&
     Boolean(agent) &&
+    !down &&
     (!busy || (answering && !sending));
 
   const post = useCallback(
@@ -254,6 +263,11 @@ export function AskPanelContent({
     },
     [session],
   );
+
+  const fail = useCallback((message: string, rerun: () => void) => {
+    setRequestError(message);
+    setAgain(() => rerun);
+  }, []);
 
   const ask = async (question: AskQuestion) => {
     if (!agent || !canAsk || thread?.status === "failed") return false;
@@ -291,7 +305,10 @@ export function AskPanelContent({
 
       return true;
     } catch (error) {
-      setRequestError(error instanceof Error ? error.message : String(error));
+      // The question is back in the composer; sending it again sends that.
+      fail(error instanceof Error ? error.message : String(error), () =>
+        composer.current?.form?.requestSubmit(),
+      );
 
       return false;
     } finally {
@@ -319,17 +336,20 @@ export function AskPanelContent({
   );
 
   const decide = useCallback(
-    (permissionId: string, optionId: string) =>
+    function decide(permissionId: string, optionId: string) {
       void post(`/ask/${threadId}/permission`, {
         permissionId,
         optionId,
-      }).catch((error: Error) => setRequestError(error.message)),
-    [post, threadId],
+      }).catch((error: Error) =>
+        fail(error.message, () => decide(permissionId, optionId)),
+      );
+    },
+    [post, threadId, fail],
   );
 
   const stop = () =>
     void post(`/ask/${threadId}/cancel`).catch((error: Error) =>
-      setRequestError(error.message),
+      fail(error.message, stop),
     );
 
   const chosen = agents?.find((candidate) => candidate.id === agent);
@@ -374,7 +394,7 @@ export function AskPanelContent({
     }
 
     void post(`/ask/${threadId}/choice`, { kind, value }).catch(
-      (error: Error) => setRequestError(error.message),
+      (error: Error) => fail(error.message, () => choose(kind, value)),
     );
   };
 
@@ -397,7 +417,7 @@ export function AskPanelContent({
     }
 
     void post(`/ask/${threadId}/permissions`, { bypass: value }).catch(
-      (error: Error) => setRequestError(error.message),
+      (error: Error) => fail(error.message, () => permit(value)),
     );
   };
 
@@ -407,7 +427,7 @@ export function AskPanelContent({
     requestError ??
     thread?.error ??
     (lost
-      ? `Whiteboard lost its connection to ${thread?.agentName ?? chosenName}.`
+      ? `Whiteboard lost its connection to ${session.review?.host ?? thread?.agentName ?? chosenName}.`
       : null);
 
   // Saved once its agent started a session; before that, nothing reopens it.
@@ -453,6 +473,22 @@ export function AskPanelContent({
             replace: true,
           })
       : undefined;
+
+  const errorAction = reconnect
+    ? { label: "Reconnect", run: reconnect }
+    : retry
+      ? { label: "Try again", run: retry }
+      : startOver
+        ? { label: "Start a new conversation", run: startOver }
+        : requestError !== null && again && !down
+          ? {
+              label: "Try again",
+              run: () => {
+                setRequestError(null);
+                again();
+              },
+            }
+          : undefined;
 
   // Reopening starts the agent and loads its session. Whiteboard's saved
   // copy shows meanwhile; one saved before that copy waits for the replay.
@@ -594,6 +630,7 @@ export function AskPanelContent({
       agents={agents}
       agent={agent}
       locked={threadId !== null || savedThreadId !== undefined}
+      unavailable={down?.label}
       onPick={(picked) => {
         setAgent(picked);
         setPicks({});
@@ -605,6 +642,13 @@ export function AskPanelContent({
   return (
     <div {...stylex.props(askPanelStyles.body)}>
       {header ? createPortal(agentPicker, header) : agentPicker}
+      {down ? (
+        <AskHostBanner
+          status={down}
+          host={session.review?.host}
+          hosts={session.review?.hosts}
+        />
+      ) : null}
 
       <AskFilesProvider key={threadId} threadId={threadId}>
         <div {...stylex.props(styles.threadFrame)}>
@@ -651,19 +695,15 @@ export function AskPanelContent({
             ) : error ? (
               <p {...stylex.props(askPanelStyles.error)} role="alert">
                 {error}
-                {reconnect || retry || startOver ? (
+                {errorAction ? (
                   <>
                     {" "}
                     <button
                       type="button"
                       {...stylex.props(askPanelStyles.errorAction)}
-                      onClick={reconnect ?? retry ?? startOver}
+                      onClick={errorAction.run}
                     >
-                      {reconnect
-                        ? "Reconnect"
-                        : retry
-                          ? "Try again"
-                          : "Start a new conversation"}
+                      {errorAction.label}
                     </button>
                   </>
                 ) : null}
@@ -685,7 +725,7 @@ export function AskPanelContent({
             ? "/ for commands, @ for files"
             : "@ for files",
         )}
-        disabled={thread?.status === "failed"}
+        disabled={thread?.status === "failed" || down !== undefined}
         canAsk={canAsk}
         stop={busy && threadId ? stop : undefined}
         connecting={thread?.status === "starting"}
@@ -776,6 +816,25 @@ export function AskReadOnlyThread({
         Read-only history
       </StatusBanner>
     </div>
+  );
+}
+
+function AskHostBanner({
+  status,
+  host,
+  hosts,
+}: {
+  status: ReviewHostStatus;
+  host?: string;
+  hosts?: ReviewRemoteHostActions;
+}): ReactElement {
+  const { failure, button } = useHostActionButton(hosts, host, status.action);
+  const why = failure ?? status.sentence;
+
+  return (
+    <StatusBanner action={button}>
+      {host && why.includes(host) ? why : `${status.label} · ${why}`}
+    </StatusBanner>
   );
 }
 

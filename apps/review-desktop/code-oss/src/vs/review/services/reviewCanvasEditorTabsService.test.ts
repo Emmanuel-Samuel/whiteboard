@@ -10,6 +10,7 @@ import type { VSBuffer } from "../../base/common/buffer.js";
 import { Event } from "../../base/common/event.js";
 import { URI } from "../../base/common/uri.js";
 import { ReviewCanvasEditorInput } from "../browser/parts/canvas/reviewCanvasEditorInput.js";
+import { ReviewHostDown } from "../browser/parts/canvas/reviewHostFailure.js";
 import { apiSourceUri } from "../common/reviewSourceView.js";
 import { ReviewCanvasEditorTabsService } from "./reviewCanvasEditorTabsService.js";
 
@@ -67,7 +68,7 @@ function sourceTabs(t: TestContext, answer: (url: URL) => object) {
 		{ createInstance: (_ctor: unknown, target: never) => new ReviewCanvasEditorInput(target, {} as never) } as never,
 		{ onDidCloseEditor: Event.None } as never,
 		{} as never,
-		{ async getConnection() { return { serverUrl: "http://localhost", token: "test" }; } } as never,
+		{ async getConnection() { return { serverUrl: "http://localhost", token: "test" }; }, async readRemoteHosts() { return []; } } as never,
 		{ async openWindow(toOpen: never, options: never) { opened.push({ toOpen, options }); } } as never,
 		{ warn() {} } as never,
 		{ async writeFile(resource: URI, content: VSBuffer) { written.push(`${resource.toString()}=${content.toString()}`); } } as never,
@@ -111,4 +112,11 @@ test("a remote diff opens its empty side from a laptop empty file", async (t) =>
 	]);
 	assert.equal(options.remoteAuthority, HOST);
 	assert.equal(options.diffMode, true);
+});
+
+test("a gateway 503 naming a host is that host's error", async (t) => {
+	const { tabs } = sourceTabs(t, () => remoteAnswer);
+	t.mock.method(globalThis, "fetch", async () => Response.json({ ok: false, error: "gateway text" }, { status: 503, headers: { "x-review-host": "devbox" } }));
+	await assert.rejects(tabs.openApiSource({ reviewId: "r1", kind: "current" }, "Fix the parser"), (error: unknown) =>
+		error instanceof ReviewHostDown && error.host.alias === "devbox" && error.host.state === "offline");
 });

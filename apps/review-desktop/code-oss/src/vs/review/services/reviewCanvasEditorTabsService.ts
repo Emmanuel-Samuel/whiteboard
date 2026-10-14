@@ -23,6 +23,7 @@ import {
 	ReviewCanvasEditorInput,
 	type ReviewCanvasEditorTarget,
 } from "../browser/parts/canvas/reviewCanvasEditorInput.js";
+import { ReviewHostDown } from "../browser/parts/canvas/reviewHostFailure.js";
 
 import { reviewSourceQuery, type ReviewRemoteNavigatorAnswer, type ReviewSourceSelection } from "../common/reviewProtocol.js";
 import { REVIEW_LANGUAGE_SOURCE_SCHEME } from "../common/reviewReadonlySource.js";
@@ -187,6 +188,11 @@ export class ReviewCanvasEditorTabsService extends Disposable implements IReview
 			headers: { "x-review-token": token },
 			signal: AbortSignal.timeout(60_000),
 		});
+		const alias = response.status === 503 && response.headers.get("x-review-host");
+		if (alias) {
+			const host = (await this.desktopConnection.readRemoteHosts().catch(() => [])).find(host => host.alias === alias);
+			throw new ReviewHostDown(host && host.state !== "online" ? host : { alias, state: "offline" });
+		}
 		if (!response.ok) throw await reviewResponseError(response, "Could not open the code navigator.");
 		return response.json();
 	}

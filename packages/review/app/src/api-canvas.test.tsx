@@ -6,6 +6,7 @@ import path from "node:path";
 
 import type {
   JsonObject,
+  ReviewApiSummary,
   ReviewCanvasBridge,
   ReviewDiffFileWire,
   ReviewDiffViewSpec,
@@ -1461,7 +1462,7 @@ it("shows why a remote review has not loaded, with its host's next step", async 
 
 async function mountPeekReview(content: {
   host?: string;
-  available?: { sourceWindows: boolean };
+  available?: ReviewApiSummary["available"];
 }) {
   const review = await command({
     type: "create",
@@ -1603,6 +1604,19 @@ it.each([
     expect(diffs[0]!.openFile).toBe(shown ? undefined : false);
   },
 );
+
+it("keeps Source tree on a remote review whose Source windows are off, disabled with the reason", async () => {
+  const { button } = await mountPeekReview({
+    host: "devbox",
+    available: {
+      sourceWindows: false,
+      reason: "devbox offline.",
+    },
+  });
+
+  expect(button("Source tree ↗")?.disabled).toBe(true);
+  expect(button("Source tree ↗")?.title).toBe("devbox offline.");
+});
 
 it("keeps the open peeks and Diff view when the host's source windows go away and return", async () => {
   const on = { sourceWindows: true };

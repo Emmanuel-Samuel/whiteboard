@@ -131,6 +131,7 @@ it("shows the files an answer names as text where Source windows are unavailable
 
   session.review!.available = {
     sourceWindows: false,
+    reason: "devbox offline.",
   };
 
   const entries: AgentEntry[] = [
@@ -172,7 +173,9 @@ it("shows the files an answer names as text where Source windows are unavailable
     (element) => element.textContent === "src/f.ts:12",
   )!;
 
-  expect(code).toBeDefined();
+  expect(code.closest("[title]")?.getAttribute("title")).toBe(
+    "devbox offline.",
+  );
   expect(container.querySelector('[role="link"], a, button')).toBeNull();
 
   await act(async () => code.click());

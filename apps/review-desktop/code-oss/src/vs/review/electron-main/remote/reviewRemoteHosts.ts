@@ -226,9 +226,10 @@ export class ReviewRemoteHosts {
 		return online && this.hosts.get(online.alias)?.languageEndpoint(serverId);
 	}
 
-	/** The state of the machine `serverId`, through the alias in the setting that served it this session. */
-	hostState(serverId: string, states: readonly ReviewGatewayHostState[]): ReturnType<typeof remoteHostState> {
-		const configured = [...this.hosts.values()].find((host) => host.serverId === serverId)?.state.alias;
+	/** The state of machine `serverId`, through the alias that served it, or `last` until that alias attaches. */
+	hostState(serverId: string, states: readonly ReviewGatewayHostState[], last?: string): ReturnType<typeof remoteHostState> {
+		const configured = [...this.hosts.values()].find((host) => host.serverId === serverId)?.state.alias
+			?? (last !== undefined && this.hosts.has(last) && this.hosts.get(last)?.serverId === undefined ? last : undefined);
 		return remoteHostState(serverId, states, configured);
 	}
 
