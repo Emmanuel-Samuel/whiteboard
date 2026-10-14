@@ -61,7 +61,10 @@ export const ACTION_WORDS: Record<
 
 /** Runs a host's next step; Settings opens scrolled to Remote hosts. */
 export function useHostAction(
-  hosts: ReviewRemoteHostActions | undefined,
+  hosts:
+    | (Pick<ReviewRemoteHostActions, "retry" | "install"> &
+        Partial<Pick<ReviewRemoteHostActions, "openSettings">>)
+    | undefined,
   alias: string | undefined,
   retried?: () => void,
 ) {
@@ -78,7 +81,7 @@ export function useHostAction(
         ? hosts.retry(alias).then(retried)
         : action === "install"
           ? hosts.install(alias)
-          : hosts.openSettings().then(revealRemoteHosts);
+          : Promise.resolve(hosts.openSettings?.()).then(revealRemoteHosts);
 
     void step
       .catch((error: Error) => setFailure(error.message))
