@@ -813,18 +813,15 @@ test("this version's CLI on PATH counts as installed: no prompt, no install, and
 	assert.match(ssh.of("wb-test-a", "exec")[0].input!, /command -v whiteboard[\s\S]*remote attach --json --replace/);
 });
 
-test("another version's CLI on PATH is updated without asking, even on a host that declined", async (t) => {
+test("another version's CLI on PATH does not count: the user is asked", async (t) => {
 	const port = await healthServer(t);
-	const { flow, prompts, runs } = await installFlow(t, "ask");
-	await flow.consent.set("wb-test-a", "deny");
-	const { host, ssh, last } = hostFor(t, { probe: { pathCli: { path: "/usr/local/bin/whiteboard", version: "0.1.5" } } }, port, "wb-test-a", "/tmp/wb-ssh-test", flow);
+	const { flow, prompts } = await installFlow(t, "ask", { answers: [false] });
+	const { host, last } = hostFor(t, { probe: { pathCli: { path: "/usr/local/bin/whiteboard", version: "0.1.5" } } }, port, "wb-test-a", "/tmp/wb-ssh-test", flow);
 
 	host.start();
 	await until(() => last()?.endpoint !== undefined);
 
-	assert.deepEqual([prompts.length, runs.length], [0, 1]);
-	assert.equal(last()?.declined, undefined);
-	assert.match(ssh.of("wb-test-a", "exec")[0].input!, /remote attach --json --replace/);
+	assert.equal(prompts.length, 1);
 	assert.equal(await flow.consent.get("wb-test-a"), "deny");
 });
 

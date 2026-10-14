@@ -79,9 +79,11 @@ instead of `~/.dev`. The review server keeps reviews in `~/.dev`.
 
 ### Updates
 
-When Desktop updates, it installs its new version without asking. It restarts
-the review server it started. It keeps the previous version and any version
-still running. It leaves a server you started yourself running.
+When Desktop updates, it installs its new version without asking on a host
+where it installed Whiteboard before. It asks first where you installed
+Whiteboard yourself. It restarts the review server it started. It keeps the
+previous version and any version still running. It leaves a server you started
+yourself running.
 
 ### The setting
 

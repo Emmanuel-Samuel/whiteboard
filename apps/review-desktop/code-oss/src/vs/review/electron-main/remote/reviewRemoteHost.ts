@@ -638,8 +638,8 @@ export class ReviewRemoteHost {
 		if (artifact instanceof ReviewRemoteNoTarball) return this.cannotInstall(probe, version, noTarballText(this.alias));
 		if (artifact instanceof Error) return this.cannotInstall(probe, version, installFailureText(this.alias, version, "preparing", artifact.message));
 		if (!present && !probe.releasesReachable) return this.cannotInstall(probe, version, `${this.alias} cannot reach ${origin}.`);
-		// Like VS Code's server, a host that already has Whiteboard is updated without asking.
-		const upgrade = probe.installed.length > 0 || probe.pathCli !== null;
+		// Like VS Code's server, Desktop updates its own installs without asking; a CLI the user installed is theirs.
+		const upgrade = probe.installed.length > 0;
 		if (!present && !upgrade && mode === "ask" && !(await this.agreed(flow, probe, version, stale))) {
 			this.declined = true;
 			return stale() ? undefined : onPath;
