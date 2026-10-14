@@ -92,7 +92,7 @@ export function showSourceWindowHostState(
 	let stopped = false;
 	let handle: ReturnType<typeof setTimeout> | undefined;
 	const tick = async () => {
-		const state = await hosts.state(serverId).catch(() => undefined);
+		const state = await hosts.state(serverId, mainAlias ?? stored?.get()).catch(() => undefined);
 		if (stopped) return;
 		if (state) {
 			if (state.alias && state.alias !== mainAlias) stored?.set(state.alias);
