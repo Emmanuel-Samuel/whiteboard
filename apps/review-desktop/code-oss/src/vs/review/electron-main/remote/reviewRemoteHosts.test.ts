@@ -133,6 +133,16 @@ test("a machine whose entry lost its id while unreachable is known through its a
 	assert.equal(manager.hostState(FAKE_SERVER_ID, unreachable), undefined);
 });
 
+test("after a restart, a window's last alias gives its machine's state until that alias attaches", async (t) => {
+	const { manager } = await managerFor(t, { "wb-test-a": { master: "hang" } });
+	manager.update(true, ["wb-test-a"]);
+
+	const unreachable = [{ alias: "wb-test-a", state: "unreachable" as const }];
+	assert.deepEqual(manager.hostState(FAKE_SERVER_ID, unreachable, "wb-test-a"), { alias: "wb-test-a", state: "unreachable" });
+	assert.equal(manager.hostState(FAKE_SERVER_ID, unreachable), undefined);
+	assert.equal(manager.hostState(FAKE_SERVER_ID, unreachable, "gone"), undefined);
+});
+
 test("an alias added again while its old host closes starts only after the old master exited", async (t) => {
 	const { manager, ssh, sentUntil } = await managerFor(t, { "wb-test-a": { exitDelayMs: 150 } });
 

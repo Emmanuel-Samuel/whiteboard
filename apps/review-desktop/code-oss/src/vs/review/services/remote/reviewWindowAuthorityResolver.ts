@@ -22,7 +22,7 @@ export const REMOTE_WINDOW_RESOLVE_WAIT_MS = 60_000;
 
 export interface ReviewWindowHosts {
 	endpoint(serverId: string): Promise<ReviewRemoteLanguageEndpoint | undefined>;
-	state(serverId: string): Promise<({ alias?: string } & Pick<ReviewGatewayHostState, "state" | "detail">) | undefined>;
+	state(serverId: string, last?: string): Promise<({ alias?: string } & Pick<ReviewGatewayHostState, "state" | "detail">) | undefined>;
 }
 
 /** Reloads a window that could not reach its host, once the host's forward answers. */
@@ -45,7 +45,7 @@ export function reloadWhenOnline(hosts: ReviewWindowHosts, serverId: string, rel
 export function reviewWindowHosts(channel: IChannel): ReviewWindowHosts {
 	return {
 		endpoint: (serverId) => channel.call("getRemoteLanguageEndpoint", serverId),
-		state: (serverId) => channel.call("getRemoteHostState", serverId),
+		state: (serverId, last) => channel.call("getRemoteHostState", last === undefined ? serverId : [serverId, last]),
 	};
 }
 
