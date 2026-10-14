@@ -206,7 +206,6 @@ export type AskAgentLauncher = (
     bypass?: boolean;
     /** The MCP servers its sessions are given. */
     mcpServers?: McpServer[];
-    /** Where it is found, and the environment it runs in. */
     env?: NodeJS.ProcessEnv;
   },
 ) => Promise<AskAgentProcess>;

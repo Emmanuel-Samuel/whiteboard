@@ -124,7 +124,7 @@ export async function takeOverServerHome<T>(
 const LOGIN_PATH_TIMEOUT_MS = 4_000;
 
 /** Started over ssh, this server has sshd's PATH; agents are on the login
- * shell's. Its own node comes last. */
+ * shell's. */
 async function agentEnv(): Promise<NodeJS.ProcessEnv> {
   const login = process.env.SHELL && (await loginPath(process.env.SHELL));
 
@@ -136,7 +136,6 @@ async function agentEnv(): Promise<NodeJS.ProcessEnv> {
   };
 }
 
-/** Only its marked line is read, so start-up output is ignored. */
 function loginPath(shell: string) {
   return new Promise<string | undefined>((resolve) => {
     const child = spawn(
