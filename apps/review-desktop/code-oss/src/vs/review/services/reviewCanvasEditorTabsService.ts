@@ -27,14 +27,17 @@ import {
 import { reviewSourceQuery, type ReviewRemoteNavigatorAnswer, type ReviewSourceSelection } from "../common/reviewProtocol.js";
 import { REVIEW_LANGUAGE_SOURCE_SCHEME } from "../common/reviewReadonlySource.js";
 import { sourceLocation, sourceSelectionIdentity, REVIEW_API_SOURCE_SCHEME } from "../common/reviewSourceView.js";
+import { reviewRemoteAuthority } from "./remote/reviewRemoteAuthority.js";
 import { IReviewDesktopConnectionService, reviewResponseError } from "./reviewDesktopConnectionService.js";
 
 type NavigatorAnswer = { workspacePath: string; filePath?: string } | ReviewRemoteNavigatorAnswer;
 
-function workspace(answer: NavigatorAnswer): { workspaceUri: URI; remote: { remoteAuthority?: string } } {
-	return "remoteAuthority" in answer
-		? { workspaceUri: URI.parse(answer.workspaceUri), remote: { remoteAuthority: answer.remoteAuthority } }
-		: { workspaceUri: URI.file(answer.workspacePath), remote: {} };
+/** A remote answer's host paths open on its server's `whiteboard+` authority. */
+function navigatorPaths(answer: NavigatorAnswer): { uri: (path: string) => URI; remote: { remoteAuthority?: string } } {
+	if (!("serverId" in answer)) return { uri: URI.file, remote: {} };
+	const authority = reviewRemoteAuthority(answer.serverId);
+	if (!authority) throw new Error("The remote host's server id cannot be opened.");
+	return { uri: (path) => URI.from({ scheme: Schemas.vscodeRemote, authority, path }), remote: { remoteAuthority: authority } };
 }
 
 export const IReviewCanvasEditorTabsService = createDecorator<IReviewCanvasEditorTabsService>(
@@ -124,8 +127,8 @@ export class ReviewCanvasEditorTabsService extends Disposable implements IReview
 
 	async openApiSource(selection: ReviewSourceSelection, title: string): Promise<void> {
 		const result = await this.navigatorWorkspace(selection.reviewId, selection.kind === "version" ? { version: selection.version } : {});
-		const { workspaceUri, remote } = workspace(result);
-		await this.host.openWindow([{ workspaceUri, label: title }], { forceNewWindow: true, ...remote });
+		const { uri, remote } = navigatorPaths(result);
+		await this.host.openWindow([{ workspaceUri: uri(result.workspacePath), label: title }], { forceNewWindow: true, ...remote });
 	}
 
 	/** Hand source opens to the native workspace before Review creates an editor group. */
@@ -163,12 +166,12 @@ export class ReviewCanvasEditorTabsService extends Disposable implements IReview
 			file: local ? undefined : target.file,
 			empty: new URLSearchParams(resource.query).has("empty") ? "true" : undefined,
 		});
-		const { workspaceUri, remote } = workspace(result);
-		const fileUri = "remoteAuthority" in result
-			? result.emptySide ? await this.emptyFile() : result.fileUri && URI.parse(result.fileUri)
-			: local ? URI.file(resource.fsPath) : result.filePath && URI.file(result.filePath);
+		const { uri, remote } = navigatorPaths(result);
+		const fileUri = "serverId" in result
+			? result.emptySide ? await this.emptyFile() : result.filePath && uri(result.filePath)
+			: local ? URI.file(resource.fsPath) : result.filePath && uri(result.filePath);
 		if (!fileUri) throw new Error("The navigator did not resolve the source file.");
-		return { workspaceUri, fileUri, remote };
+		return { workspaceUri: uri(result.workspacePath), fileUri, remote };
 	}
 
 	private async emptyFile(): Promise<URI> {

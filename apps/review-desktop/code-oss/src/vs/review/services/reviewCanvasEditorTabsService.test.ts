@@ -78,9 +78,9 @@ function sourceTabs(t: TestContext, answer: (url: URL) => object) {
 }
 
 const remoteAnswer = {
-	workspaceUri: `vscode-remote://${HOST}/home/dev/navigator/repo.code-workspace`,
-	fileUri: "vscode-remote://whiteboard%2Bc0ffee/home/dev/repo/src/a%20b.ts",
-	remoteAuthority: HOST,
+	workspacePath: "/home/dev/navigator/repo.code-workspace",
+	filePath: "/home/dev/repo/src/a b.ts",
+	serverId: "C0FFEE",
 };
 
 test("a remote answer opens the host's workspace and file at the position, titled with the review", async (t) => {
@@ -93,27 +93,24 @@ test("a remote answer opens the host's workspace and file at the position, title
 	assert.equal(options.remoteAuthority, HOST);
 });
 
-test("a remote diff opens its empty side from a laptop empty file named by the laptop, never by the host", async (t) => {
-	for (const file of ["..\\..\\x.ts", "../../x.ts"]) {
-		const { tabs, opened, written } = sourceTabs(t, url => url.searchParams.has("empty")
-			? { workspaceUri: remoteAnswer.workspaceUri, remoteAuthority: HOST, emptySide: true }
-			: remoteAnswer);
-		await tabs.openSourceEditor({
-			original: { resource: apiSourceUri({ view: view("wt1"), side: "base", file }, true) },
-			modified: { resource: apiSourceUri({ view: view("wt1"), side: "head", file }) },
-		});
-		const empty = URI.file("/laptop/cache/source-empty/empty");
-		assert.deepEqual(written, [`${empty.toString()}=`]);
-		const [{ toOpen, options }] = opened;
-		assert.deepEqual(toOpen.map(item => (item.workspaceUri ?? item.fileUri)!.toString()), [
-			remote("/home/dev/navigator/repo.code-workspace"),
-			empty.with({ scheme: "vscode-userdata" }).toString(),
-			remote("/home/dev/repo/src/a b.ts"),
-		]);
-		assert.equal(toOpen.some(item => item.fileUri?.scheme === "file"), false);
-		assert.equal(options.remoteAuthority, HOST);
-		assert.equal(options.diffMode, true);
-	}
+test("a remote diff opens its empty side from a laptop empty file", async (t) => {
+	const { tabs, opened, written } = sourceTabs(t, url => url.searchParams.has("empty")
+		? { workspacePath: remoteAnswer.workspacePath, serverId: remoteAnswer.serverId, emptySide: true }
+		: remoteAnswer);
+	await tabs.openSourceEditor({
+		original: { resource: apiSourceUri({ view: view("wt1"), side: "base", file: "src/a b.ts" }, true) },
+		modified: { resource: apiSourceUri({ view: view("wt1"), side: "head", file: "src/a b.ts" }) },
+	});
+	const empty = URI.file("/laptop/cache/source-empty/empty");
+	assert.deepEqual(written, [`${empty.toString()}=`]);
+	const [{ toOpen, options }] = opened;
+	assert.deepEqual(toOpen.map(item => (item.workspaceUri ?? item.fileUri)!.toString()), [
+		remote("/home/dev/navigator/repo.code-workspace"),
+		empty.with({ scheme: "vscode-userdata" }).toString(),
+		remote("/home/dev/repo/src/a b.ts"),
+	]);
+	assert.equal(options.remoteAuthority, HOST);
+	assert.equal(options.diffMode, true);
 });
 
 test("references and the source tree open a remote review's window on its host", async (t) => {

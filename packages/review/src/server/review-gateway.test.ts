@@ -353,15 +353,12 @@ it("streams a remote answer line by line and closes the remote connection when t
 });
 
 /** A remote whose navigator answers `answers[file]` for `?file=`; `gone` with 409. */
-async function startNavigator(
-  answers: Record<string, JsonObject>,
-  serverId = "C0FFEE-42",
-) {
+async function startNavigator(answers: Record<string, JsonObject>) {
   const reviewId = randomUUID();
 
   const fake = await startFake({
     version,
-    serverId,
+    serverId: "c0ffee-42",
     reviewIds: [reviewId],
     handle(request, response) {
       if (!request.url?.startsWith(`/reviews-api/${reviewId}/navigator`))
@@ -394,90 +391,21 @@ async function startNavigator(
   return { ...started, open };
 }
 
-it("answers a remote navigator with vscode-remote URIs on its host", async () => {
+it("forwards a remote navigator's answer and refusal untouched", async () => {
+  const file = {
+    workspacePath: "/home/dev/ws.code-workspace",
+    filePath: "/home/dev/a.ts",
+    serverId: "c0ffee-42",
+  };
+
   const { open } = await startNavigator({
-    file: {
-      workspacePath: "/home/dev/.review/ws/a b.code-workspace",
-      filePath: "/home/dev/repo (1)/src/a#b+c@d!'*.ts",
-    },
-    empty: {
-      workspacePath: "/home/dev/.review/ws/x.code-workspace",
-      emptySide: true,
-    },
-    unicode: { workspacePath: "/home/dév/ws.code-workspace" },
-  });
-
-  const response = await open("file");
-  expect(response.status).toBe(200);
-  expect(response.headers.get(REVIEW_HOST_HEADER)).toBe("wb-a");
-  expect(await response.json()).toEqual({
-    workspaceUri:
-      "vscode-remote://whiteboard+c0ffee-42/home/dev/.review/ws/a%20b.code-workspace",
-    fileUri:
-      "vscode-remote://whiteboard+c0ffee-42/home/dev/repo%20%281%29/src/a%23b%2Bc%40d%21%27%2A.ts",
-    remoteAuthority: "whiteboard+c0ffee-42",
-  });
-
-  expect(await (await open("empty")).json()).toEqual({
-    workspaceUri:
-      "vscode-remote://whiteboard+c0ffee-42/home/dev/.review/ws/x.code-workspace",
-    remoteAuthority: "whiteboard+c0ffee-42",
-    emptySide: true,
-  });
-
-  expect(await (await open("unicode")).json()).toMatchObject({
-    workspaceUri:
-      "vscode-remote://whiteboard+c0ffee-42/home/d%C3%A9v/ws.code-workspace",
-  });
-});
-
-it.each([
-  ["a relative path", "home/dev/repo/a.ts"],
-  ["a lone surrogate", "/home/dev/\ud800.ts"],
-  ["a scheme", "file:///home/dev/a.ts"],
-  ["a : before the first /", "c:/home/dev/a.ts"],
-  ["no string", 7],
-])(
-  "refuses a remote navigator answer whose path has %s",
-  async (_, hostile) => {
-    const { open } = await startNavigator({
-      good: {
-        workspacePath: "/home/dev/ws.code-workspace",
-        filePath: "/home/dev/a.ts",
-      },
-      workspace: { workspacePath: hostile },
-      file: { workspacePath: "/home/dev/ws.code-workspace", filePath: hostile },
-    });
-
-    expect((await open("good")).status).toBe(200);
-
-    for (const file of ["workspace", "file"]) {
-      const response = await open(file);
-      expect(response.status).toBe(502);
-      expect(response.headers.get(REVIEW_HOST_HEADER)).toBe("wb-a");
-      const text = await response.text();
-      expect(text).not.toContain("vscode-remote");
-      expect(text).not.toContain(String(hostile));
-    }
-  },
-);
-
-it("refuses a remote navigator answer from a host with an unusable server id", async () => {
-  const id = await startNavigator(
-    { good: { workspacePath: "/home/dev/ws.code-workspace" } },
-    "not_an+authority",
-  );
-
-  expect((await id.open("good")).status).toBe(502);
-});
-
-it("passes a remote navigator's refusal through", async () => {
-  const { open } = await startNavigator({
-    good: { workspacePath: "/home/dev/ws.code-workspace" },
+    file,
     gone: { ok: false, error: "The file is gone." },
   });
 
-  expect((await open("good")).status).toBe(200);
+  const response = await open("file");
+  expect(response.headers.get(REVIEW_HOST_HEADER)).toBe("wb-a");
+  expect(await response.json()).toEqual(file);
   expect(await (await open("gone")).json()).toEqual({
     ok: false,
     error: "The file is gone.",

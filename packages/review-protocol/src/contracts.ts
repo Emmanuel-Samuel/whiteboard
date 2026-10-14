@@ -994,12 +994,12 @@ export interface ReviewGatewayHostState {
   declined?: true;
 }
 
-/** `POST /:id/navigator` for a review on another machine: its host paths as
- * `vscode-remote` URIs. `emptySide`: the diff side has no file; open one locally. */
+/** `POST /:id/navigator` for a remote caller: host paths, and the server they
+ * are on. `emptySide`: the diff side has no file; open one locally. */
 export interface ReviewRemoteNavigatorAnswer {
-  workspaceUri: string;
-  fileUri?: string;
-  remoteAuthority: string;
+  workspacePath: string;
+  filePath?: string;
+  serverId: string;
   emptySide?: true;
 }
 

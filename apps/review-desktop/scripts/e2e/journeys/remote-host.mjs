@@ -169,53 +169,6 @@ export function sourcePages(ctx) {
     .filter((page) => page !== ctx.page && !page.isClosed());
 }
 
-/** Pushes every `navigator` answer `page` receives, with its body, to `answers`. */
-export async function recordNavigator(page, answers) {
-  const cdp = await page.context().newCDPSession(page);
-  const urls = new Map();
-
-  cdp.on("Network.responseReceived", ({ requestId, response }) => {
-    if (/\/reviews-api\/[^/]+\/navigator(\?|$)/.test(response.url))
-      urls.set(requestId, { url: response.url, status: response.status });
-  });
-  cdp.on("Network.loadingFinished", ({ requestId }) => {
-    const answer = urls.get(requestId);
-
-    if (answer)
-      cdp
-        .send("Network.getResponseBody", { requestId })
-        .then(({ body }) => answers.push({ ...answer, body }))
-        .catch((error) => answers.push({ ...answer, error: error.message }));
-  });
-  await cdp.send("Network.enable");
-}
-
-/** Asserts each 200 `navigator` answer named URIs on `authority` and no host path; returns how many there were. */
-export function assertUriAnswers(answers, authority) {
-  const bodies = answers.flatMap((answer) =>
-    answer.status === 200 ? [JSON.parse(answer.body)] : [],
-  );
-
-  assert.ok(bodies.length > 0, "no navigator answer was recorded");
-
-  for (const body of bodies) {
-    assert.deepEqual(
-      Object.keys(body).filter((key) => /Path$/.test(key)),
-      [],
-      JSON.stringify(body),
-    );
-    assert.equal(body.remoteAuthority, authority);
-    assert.ok(body.workspaceUri.startsWith(`vscode-remote://${authority}/`));
-    assert.ok(
-      body.emptySide === true ||
-        body.fileUri.startsWith(`vscode-remote://${authority}/`),
-      JSON.stringify(body),
-    );
-  }
-
-  return bodies.length;
-}
-
 const DESKTOP_ROUTE =
   /^\/(app|control|crash-reports|diffr-config|install|preferences|remote-hosts|telemetry|tutorial)(\/|$)|^\/reviews-api\/[^/]+\/telemetry\//;
 

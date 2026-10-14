@@ -6,13 +6,11 @@ import { promisify } from "node:util";
 import { closeSourceWindow, openHome, openSettings } from "../harness.mjs";
 import {
   alias,
-  assertUriAnswers,
   closeDesktop,
   createRemoteReview,
   masterPid,
   onRemote,
   prepared,
-  recordNavigator,
   recordRequests,
   remote,
   remoteToken,
@@ -225,10 +223,6 @@ async function journey(ctx) {
   // 3. The remote review, a sentence selected, ⌘L.
   const requests = await recordRequests(ctx.page, /\/ask\/watch(\?|$)/);
   const recorders = [{ requests, origin: new URL(ctx.discovery.url).origin }];
-  const navigator = [];
-
-  await recordNavigator(ctx.page, navigator);
-
   await openReview();
   await askAboutSentence();
   ctx.check("3. ⌘L on a selected sentence of the remote review opened Ask");
@@ -287,12 +281,6 @@ async function journey(ctx) {
   const reference = panel()
     .getByRole("link")
     .filter({ hasText: /^f\.ts$/ });
-
-  const { serverId } = (await ctx.apiOk("/remote-hosts")).find(
-    (host) => host.alias === alias,
-  );
-
-  const authority = `whiteboard+${serverId.toLowerCase()}`;
 
   await reference.waitFor();
   await reference.click();
@@ -391,10 +379,8 @@ async function journey(ctx) {
   );
   const allAsks = audit(recorders, remoteTokens);
 
-  const answers = assertUriAnswers(navigator, authority);
-
   ctx.check(
-    `11. removing the host took the review out of Home; across both launches ${allAsks.length} Ask requests, all to the local server, none with a remote token, and ${answers} navigator answer(s), each with URIs only`,
+    `11. removing the host took the review out of Home; across both launches ${allAsks.length} Ask requests, all to the local server, none with a remote token`,
   );
 }
 
