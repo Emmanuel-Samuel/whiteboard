@@ -6,6 +6,7 @@ import type {
 import { traceMachineEnabled } from "@dev.fast/trace-core";
 import {
   type AskAgentLauncher,
+  askAgentTakesMcp,
   detectAskAgents,
   launchAskAgent,
 } from "@review/ask/agents.js";
@@ -162,7 +163,10 @@ export function createWhiteboardCore(input: WhiteboardCoreInput) {
     new AskThreads(
       async (agent, cwd, options) =>
         launch(agent, cwd, { ...options, env: await ask.env }),
-      ask.tools,
+      {
+        takesMcp: async (agent) => askAgentTakesMcp(agent, await ask.env),
+        ...ask.tools,
+      },
     );
 
   const closeDeletedThreads = () =>

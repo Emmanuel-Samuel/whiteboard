@@ -3,6 +3,7 @@ import {
   REVIEW_CLIENT_HEADER,
   REVIEW_CLIENT_REMOTE,
   type ReviewRemoteLanguageEnvironment,
+  type ReviewRemoteNavigatorAnswer,
   type ReviewStreamLine,
   type ReviewStructuralDiffEvent,
 } from "@dev.fast/review-protocol";
@@ -739,16 +740,24 @@ export function createReviewApi(
         })
         .parse(context.req.query());
 
-      return context.json(
-        await data.navigatorWorkspace(
-          readReview(context.req.param("id"), input.version),
-          {
-            ...input,
-            empty: input.empty === "true",
-            anchor: queryAnchor(input),
-          },
-        ),
+      const answer = await data.navigatorWorkspace(
+        readReview(context.req.param("id"), input.version),
+        {
+          ...input,
+          empty: input.empty === "true",
+          anchor: queryAnchor(input),
+        },
       );
+
+      if (context.req.header(REVIEW_CLIENT_HEADER) !== REVIEW_CLIENT_REMOTE)
+        return context.json(answer);
+
+      return context.json({
+        ...(input.empty === "true"
+          ? { workspacePath: answer.workspacePath, emptySide: true }
+          : answer),
+        serverId: store.serverId(),
+      } satisfies ReviewRemoteNavigatorAnswer);
     });
     app.get("/:id/tree", async (context) => {
       const input = readQuerySchemas.tree.parse(context.req.query());

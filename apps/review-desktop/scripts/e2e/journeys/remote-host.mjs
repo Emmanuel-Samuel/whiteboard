@@ -161,6 +161,14 @@ export async function recordRequests(page, streamed) {
   return requests;
 }
 
+/** Every other workbench window than `ctx.page`: the Source windows. */
+export function sourcePages(ctx) {
+  return ctx.browser
+    .contexts()
+    .flatMap((context) => context.pages())
+    .filter((page) => page !== ctx.page && !page.isClosed());
+}
+
 const DESKTOP_ROUTE =
   /^\/(app|control|crash-reports|diffr-config|install|preferences|remote-hosts|telemetry|tutorial)(\/|$)|^\/reviews-api\/[^/]+\/telemetry\//;
 
@@ -409,12 +417,15 @@ async function journey(ctx, page, until) {
   await canvas.getByRole("heading", { name: second }).waitFor();
 
   const laptopOnly = canvas.locator(
-    'button[aria-label="Source tree ↗"], button[aria-label="Share review"], button[aria-label="Shared review"], [aria-label="Session views"] button[aria-label="Trace"]',
+    'button[aria-label="Share review"], button[aria-label="Shared review"], [aria-label="Session views"] button[aria-label="Trace"]',
   );
 
+  const sourceTree = canvas.locator('button[aria-label="Source tree ↗"]');
+
   await until(
-    async () => (await laptopOnly.count()) === 0,
-    "the pushed tab without Source tree, Share and Trace",
+    async () =>
+      (await laptopOnly.count()) === 0 && (await sourceTree.count()) === 1,
+    "the pushed tab with Source tree, without Share and Trace",
     10000,
   );
   await view("Diff").click();
@@ -425,15 +436,18 @@ async function journey(ctx, page, until) {
       ),
     "the pushed tab's Diff view to show f.ts",
   );
-  assert.ok(
-    await page
-      .locator(".review-multidiff-open-container")
-      .evaluateAll((all) => all.length > 0 && all.every((e) => e.hidden)),
-    "Open file shown for a review on another machine",
+  // A host with language features opens a review's files in a Source window on it.
+  await until(
+    () =>
+      page
+        .locator(".review-multidiff-open-container")
+        .evaluateAll((all) => all.length > 0 && all.some((e) => !e.hidden)),
+    "Open file in the pushed tab's Diff view",
+    10000,
   );
   await view("Whiteboard").click();
   ctx.check(
-    "5. session_create with open: true on the remote opened a tab without Open file, Source tree, Share or Trace",
+    "5. session_create with open: true on the remote opened a tab with Open file and Source tree, without Share or Trace",
   );
 
   // 6. The ssh master dies: the review says so, then recovers in the same page.

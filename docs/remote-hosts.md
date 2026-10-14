@@ -122,8 +122,8 @@ host, in the review's checkout, with the agents and sign-ins already there
 (`claude auth login`, `codex login`, `opencode auth login`,
 `cursor-agent login`, Pi's `/login`). Threads are kept on the host, so every
 laptop that connects to it sees the same history for its reviews. A file that
-an answer names shows as text, because Source windows are not available for a
-remote review.
+an answer names opens in a Source window on the host; see
+[Source windows](#source-windows).
 
 ## Remove Whiteboard from a host
 
@@ -221,9 +221,25 @@ login shell (`~/.profile` or your shell's own start-up file is enough):
   The C# extension downloads its OmniSharp server from Microsoft the first
   time it starts.
 
+## Source windows
+
+"Open file", the source tree and Ask's file links open a read-only Source
+window on the host, with search and language features.
+
+When the host stops answering, the status bar says so. The window reconnects
+when the host is back.
+
+Not available in a Source window:
+
+- Terminals and source control.
+- Live file updates on musl hosts such as Alpine. The explorer refreshes when
+  the window gets focus.
+
+Each Source window runs its own extension host on the host. Close the ones you
+are done with.
+
 ## Not available for remote reviews yet
 
-- Source windows: "Open file" and the source tree are hidden.
 - Sharing.
 - Traces.
 - Scratchpads. The scratchpad is always the laptop's.

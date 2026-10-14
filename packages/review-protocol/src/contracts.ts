@@ -994,6 +994,14 @@ export interface ReviewGatewayHostState {
   declined?: true;
 }
 
+/** `emptySide`: the diff side has no file; open one locally. */
+export interface ReviewRemoteNavigatorAnswer {
+  workspacePath: string;
+  filePath?: string;
+  serverId: string;
+  emptySide?: true;
+}
+
 export const ReviewRepositoryIdentitySchema = z.strictObject({
   kind: z.enum(["git", "jj", "none"], {
     error: "must be git, jj, or none",

@@ -54,6 +54,7 @@ import { IMainProcessService } from '../platform/ipc/common/mainProcessService.j
 import { REVIEW_DESKTOP_CHANNEL } from './common/reviewDesktopBootstrap.js';
 import { isReviewRemoteAuthority, reviewRemoteServerId } from './services/remote/reviewRemoteAuthority.js';
 import { reloadWhenOnline, reviewWindowAuthorityResolver, reviewWindowHosts } from './services/remote/reviewWindowAuthorityResolver.js';
+import { ReviewSourceWindowHostState } from './services/remote/reviewSourceWindowHostState.js';
 import { IHostService } from '../workbench/services/host/browser/host.js';
 import { FilesConfigurationService, IFilesConfigurationService } from '../workbench/services/filesConfiguration/common/filesConfigurationService.js';
 import type { IBaseFileStat } from '../platform/files/common/files.js';
@@ -72,6 +73,7 @@ class NavigatorDefaults {
 }
 
 registerWorkbenchContribution2('review.navigator.defaults', NavigatorDefaults, WorkbenchPhase.BlockStartup);
+registerWorkbenchContribution2(ReviewSourceWindowHostState.ID, ReviewSourceWindowHostState, WorkbenchPhase.BlockRestore);
 
 class NavigatorExtensionService extends NativeExtensionService {
 	private readonly windowHosts = this._instantiationService.invokeFunction((accessor) => reviewWindowHosts(accessor.get(IMainProcessService).getChannel(REVIEW_DESKTOP_CHANNEL)));
