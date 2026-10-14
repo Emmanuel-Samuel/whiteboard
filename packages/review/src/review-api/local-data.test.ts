@@ -18,11 +18,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  type ClientConnection,
-  agent,
-  methods,
-} from "@agentclientprotocol/sdk";
 import { setLocalVcsCommandObserver } from "@dev.fast/local-vcs";
 import {
   type JsonValue,
@@ -30,7 +25,8 @@ import {
   REVIEW_CLIENT_REMOTE,
 } from "@dev.fast/review-protocol";
 import { type SubscribeCallback, subscribe } from "@parcel/watcher";
-import { type AskAgentLauncher, detectAskAgents } from "@review/ask/agents.js";
+import { detectAskAgents } from "@review/ask/agents.js";
+import { idleAskAgent } from "@review/ask/ask-test-utils.js";
 import { AskThreads } from "@review/ask/threads.js";
 import { rangeAnchor } from "@review/lens-selection";
 import { createGlobalReviewServer } from "@review/server/desktop-server.js";
@@ -1033,29 +1029,7 @@ it("gives a remote caller Ask answers with checkout-relative mentions", async ()
     local.store.read(reviewId),
   );
 
-  const fake = agent({ name: "fake" })
-    .onRequest(methods.agent.initialize, () => ({
-      protocolVersion: 1,
-      agentCapabilities: { loadSession: true },
-      authMethods: [],
-    }))
-    .onRequest(methods.agent.session.new, () => ({ sessionId: "session" }))
-    .onRequest(methods.agent.session.load, () => ({}))
-    .onRequest(methods.agent.session.prompt, () => ({
-      stopReason: "end_turn" as const,
-    }));
-
-  const launch: AskAgentLauncher = async () => {
-    let connection: ClientConnection | undefined;
-
-    return {
-      connect: (client) => (connection = client.connect(fake)),
-      diagnostics: () => "",
-      stop: () => connection?.close(),
-    };
-  };
-
-  const threads = new AskThreads(launch);
+  const threads = new AskThreads(idleAskAgent().launch);
 
   const app = createReviewApi(
     local.store,

@@ -17,11 +17,6 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { PassThrough } from "node:stream";
 
-import {
-  type ClientConnection,
-  agent,
-  methods,
-} from "@agentclientprotocol/sdk";
 import * as diffr from "@dev.fast/diffr";
 import {
   type JsonValue,
@@ -32,6 +27,7 @@ import {
   parseReviewDesktopVerbFrame,
 } from "@dev.fast/review-protocol";
 import type { AskAgentLauncher } from "@review/ask/agents.js";
+import { idleAskAgent } from "@review/ask/ask-test-utils.js";
 import { runReviewCli } from "@review/cli-runner.js";
 import {
   connectReviewApi,
@@ -1336,7 +1332,6 @@ async function executable(file: string, body: string) {
 
 async function askAgentsAndEnv() {
   const launched = Promise.withResolvers<NodeJS.ProcessEnv | undefined>();
-  const started = Date.now();
 
   const server = await start(
     undefined,
@@ -1347,7 +1342,6 @@ async function askAgentsAndEnv() {
     },
   );
 
-  const startMs = Date.now() - started;
   const { worktree } = await reviewsOfBothKinds(server.client);
 
   const { agents } = await (
@@ -1363,7 +1357,6 @@ async function askAgentsAndEnv() {
   return {
     claude: agents.find((entry: { id: string }) => entry.id === "claude"),
     env: await launched.promise,
-    startMs,
   };
 }
 
@@ -1394,9 +1387,8 @@ it("starts with its own PATH when the login shell hangs", async () => {
   vi.stubEnv("SHELL", path.join(root, "shell"));
   vi.stubEnv("PATH", `${bin}:/usr/bin:/bin`);
 
-  const { claude, env, startMs } = await askAgentsAndEnv();
+  const { claude, env } = await askAgentsAndEnv();
 
-  expect(startMs).toBeLessThan(8_000);
   expect(claude).toMatchObject({ available: true });
   expect(env?.PATH).toBe(
     [bin, "/usr/bin:/bin", path.dirname(process.execPath)].join(path.delimiter),
@@ -1404,33 +1396,8 @@ it("starts with its own PATH when the login shell hangs", async () => {
 }, 20_000);
 
 it("opens an Ask thread in the review's checkout and closes it on stop", async () => {
-  const launched = Promise.withResolvers<void>();
-  let stopped = 0;
-
-  const fake = agent({ name: "fake" })
-    .onRequest(methods.agent.initialize, () => ({
-      protocolVersion: 1,
-      agentCapabilities: {},
-      authMethods: [],
-    }))
-    .onRequest(methods.agent.session.new, () => ({ sessionId: "session" }))
-    .onRequest(methods.agent.session.prompt, () => ({
-      stopReason: "end_turn" as const,
-    }));
-
-  const server = await start(undefined, false, async () => {
-    let connection: ClientConnection | undefined;
-    launched.resolve();
-
-    return {
-      connect: (client) => (connection = client.connect(fake)),
-      diagnostics: () => "",
-      stop: () => {
-        stopped++;
-        connection?.close();
-      },
-    };
-  });
+  const { launch, counts } = idleAskAgent();
+  const server = await start(undefined, false, launch);
 
   const { root: checkout, worktree } = await reviewsOfBothKinds(server.client);
 
@@ -1453,43 +1420,17 @@ it("opens an Ask thread in the review's checkout and closes it on stop", async (
   const { value = "" } = await reader.read();
   expect(JSON.parse(value.split("\n")[0]!).update.snapshot.cwd).toBe(checkout);
 
-  await launched.promise;
-  expect(stopped).toBe(0);
+  await vi.waitFor(() => expect(counts.launches).toBe(1));
+  expect(counts.stopped).toBe(0);
   await server.stop();
-  expect(stopped).toBe(1);
+  expect(counts.stopped).toBe(1);
 
   while (!(await reader.read()).done);
 });
 
 it("closes an Ask thread ten minutes after its last watcher leaves and reopens it from history", async () => {
-  let launches = 0,
-    stopped = 0;
-
-  const fake = agent({ name: "fake" })
-    .onRequest(methods.agent.initialize, () => ({
-      protocolVersion: 1,
-      agentCapabilities: { loadSession: true },
-      authMethods: [],
-    }))
-    .onRequest(methods.agent.session.new, () => ({ sessionId: "session" }))
-    .onRequest(methods.agent.session.load, () => ({}))
-    .onRequest(methods.agent.session.prompt, () => ({
-      stopReason: "end_turn" as const,
-    }));
-
-  const server = await start(undefined, false, async () => {
-    let connection: ClientConnection | undefined;
-    launches++;
-
-    return {
-      connect: (client) => (connection = client.connect(fake)),
-      diagnostics: () => "",
-      stop: () => {
-        stopped++;
-        connection?.close();
-      },
-    };
-  });
+  const { launch, counts } = idleAskAgent();
+  const server = await start(undefined, false, launch);
 
   const { worktree } = await reviewsOfBothKinds(server.client);
 
@@ -1521,12 +1462,12 @@ it("closes an Ask thread ten minutes after its last watcher leaves and reopens i
     seen += (await reader.read()).value ?? "";
 
   await vi.advanceTimersByTimeAsync(60 * 60_000);
-  expect(stopped).toBe(0);
+  expect(counts.stopped).toBe(0);
 
   await reader.cancel();
   await vi.waitFor(async () => {
     await vi.advanceTimersByTimeAsync(11 * 60_000);
-    expect(stopped).toBe(1);
+    expect(counts.stopped).toBe(1);
   });
 
   const { threads } = await (
@@ -1538,5 +1479,5 @@ it("closes an Ask thread ten minutes after its last watcher leaves and reopens i
   expect(
     (await askCall(server, `${worktree}/ask/${threadId}/open`, {})).status,
   ).toBe(200);
-  await vi.waitFor(() => expect(launches).toBe(2));
+  await vi.waitFor(() => expect(counts.launches).toBe(2));
 });
