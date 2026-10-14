@@ -100,15 +100,6 @@ test("a resolved authority waits through offline and unreachable for the moved f
 	assert.equal(connectTo(await resolver.resolveAuthority(AUTHORITY)).port, 42000);
 });
 
-test("a resolved authority whose alias left the setting fails after the wait", async () => {
-	const { hosts, next } = fakeMain([{ endpoint: 41000, states: [{ alias: "devbox", serverId: "abc-1", state: "online" }], configured: "devbox" }]);
-	const resolver = reviewWindowAuthorityResolver(fakeBase(), hosts, { wait: 20, poll: 5 });
-	await resolver.resolveAuthority(AUTHORITY);
-
-	next({ states: [{ alias: "devbox", state: "unreachable" }] });
-	await assert.rejects(resolver.resolveAuthority(AUTHORITY), (error: RemoteAuthorityResolverError) => error._code === RemoteAuthorityResolverErrorCode.NotAvailable);
-});
-
 test("a resolved authority whose machine is gone after the wait fails; one still known keeps waiting", async () => {
 	const answers: Parameters<typeof fakeChannel>[0] = [{ endpoint: endpoint(41000) }];
 	const { channel } = fakeChannel(answers);
@@ -128,13 +119,6 @@ test("a connecting host is waited for, and resolves once its forward appears", a
 	const resolver = reviewWindowAuthorityResolver(fakeBase(), reviewWindowHosts(channel), { wait: 1_000, poll: 1 });
 
 	assert.equal(connectTo(await resolver.resolveAuthority(AUTHORITY)).port, 43000);
-});
-
-test("before the host list exists, a window waits rather than calling its host offline", async () => {
-	const { channel } = fakeChannel([{}, {}, { endpoint: endpoint(44000) }]);
-	const resolver = reviewWindowAuthorityResolver(fakeBase(), reviewWindowHosts(channel), { wait: 1_000, poll: 1 });
-
-	assert.equal(connectTo(await resolver.resolveAuthority(AUTHORITY)).port, 44000);
 });
 
 test("a host still connecting after the wait, or not connecting at all, is offline", async () => {

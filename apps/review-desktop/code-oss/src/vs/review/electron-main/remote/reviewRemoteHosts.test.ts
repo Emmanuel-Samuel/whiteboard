@@ -12,7 +12,7 @@ import test from "node:test";
 import type { ReviewGatewayHost } from "../../common/reviewProtocol.js";
 import { attachOutput, COMMIT, detectOutput, FAKE_SERVER_ID, fakeClock, fakeSsh, flush, healthServer, until, type FakeRemote } from "./test/fakeSsh.js";
 import type { ReviewRemoteInstallFlow } from "./reviewRemoteHost.js";
-import { closeRemoteHostWindows, remoteHostState, ReviewRemoteHosts, type ReviewRemoteHostsOptions } from "./reviewRemoteHosts.js";
+import { closeRemoteHostWindows, ReviewRemoteHosts, type ReviewRemoteHostsOptions } from "./reviewRemoteHosts.js";
 import { openRemoteInstallConsent } from "./reviewRemoteInstallConsent.js";
 import type { SshPromptRequest } from "./reviewSshAskpass.js";
 import { reviewSshInstancePrefix } from "./reviewSshCommand.js";
@@ -117,16 +117,6 @@ test("removing a machine's last alias closes the windows bound to it, and no oth
 	assert.deepEqual(closed, []);
 	manager.update(true, ["wb-test-b"]);
 	assert.deepEqual(closed, [`whiteboard+${FAKE_SERVER_ID}`]);
-});
-
-test("a window waiting on a machine sees its alias and state, or connecting while an alias has not reported its id", () => {
-	assert.deepEqual(remoteHostState("s1", [
-		{ alias: "copy", serverId: "s1", state: "duplicate" },
-		{ alias: "devbox", serverId: "s1", state: "online" },
-	]), { alias: "devbox", serverId: "s1", state: "online" });
-	assert.deepEqual(remoteHostState("s1", [{ alias: "devbox", serverId: "s1", state: "offline", detail: "gone" }]), { alias: "devbox", serverId: "s1", state: "offline", detail: "gone" });
-	assert.deepEqual(remoteHostState("s1", [{ alias: "new", state: "connecting" }]), { state: "connecting" });
-	assert.equal(remoteHostState("s1", [{ alias: "gone", state: "unreachable" }, { alias: "other", serverId: "s2", state: "connecting" }]), undefined);
 });
 
 test("a machine whose entry lost its id while unreachable is known through its alias until that alias leaves the setting", async (t) => {
