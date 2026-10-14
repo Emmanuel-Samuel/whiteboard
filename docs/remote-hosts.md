@@ -121,8 +121,8 @@ the host.
 host, in the review's checkout, with the agents and sign-ins already there
 (`claude auth login`, `codex login`, `opencode auth login`,
 `cursor-agent login`, Pi's `/login`). Threads are kept on the host, so every
-laptop that attaches it sees the same history for its reviews. A file that an
-answer names shows as text, because Source windows are not available for a
+laptop that connects to it sees the same history for its reviews. A file that
+an answer names shows as text, because Source windows are not available for a
 remote review.
 
 ## Remove Whiteboard from a host
