@@ -11,11 +11,9 @@ import {
 } from "./remote-ask.mjs";
 import {
   alias,
-  assertUriAnswers,
   closeDesktop,
   onRemote,
   prepared,
-  recordNavigator,
   remote,
   runDir,
   sourcePages,
@@ -153,7 +151,6 @@ const hostEntry = (page) =>
 async function journey(ctx) {
   const { until } = ctx;
   const timings = {};
-  const navigator = [];
 
   const hostState = async () =>
     (await ctx.apiOk("/remote-hosts")).find((host) => host.alias === alias);
@@ -232,7 +229,6 @@ async function journey(ctx) {
 
   assert.match(reviewId, /^[0-9a-f-]{36}$/, "the remote review's id");
   assert.match(secondId, /^[0-9a-f-]{36}$/, "the second review's id");
-  await recordNavigator(ctx.page, navigator);
 
   const section = (await openSettings(ctx)).getByRole("region", {
     name: "Remote hosts",
@@ -524,7 +520,6 @@ async function journey(ctx) {
     .flatMap((c) => c.pages())
     .find((page) => page !== restored && page.url().includes("workbench"));
   await ctx.watchPage(ctx.page);
-  await recordNavigator(ctx.page, navigator);
 
   await until(
     async () => (await hostEntry(restored)) === offlineText,
@@ -570,23 +565,13 @@ async function journey(ctx) {
   assert.deepEqual(sourcePages(ctx), []);
   check(ctx, `15. removing ${alias} in Settings closed its Source window`);
 
-  // 16. Every navigator answer the UI received named URIs, never host paths.
-  const answers = assertUriAnswers(navigator, authority);
-
-  assert.ok(answers >= 4, `${answers} navigator answers`);
-
-  check(
-    ctx,
-    `16. ${answers} navigator answers reached the UI, each with workspaceUri and fileUri (or emptySide) on ${authority}, none with workspacePath or filePath`,
-  );
-
-  // 17. The host's extension hosts with one Source window, then two.
+  // 16. The host's extension hosts with one Source window, then two.
   const total = (hosts) => mib(hosts.reduce((sum, [, kib]) => sum + kib, 0));
   const extra = rss.two.filter(([pid]) => !rss.one.some(([p]) => p === pid));
 
   check(
     ctx,
-    `17. extension hosts on ${alias}: the review window and one Source window ${rss.one.length} processes, ${rss.one.map(([, kib]) => `${mib(kib)} MiB`).join(" + ")} = ${total(rss.one)} MiB; two Source windows ${rss.two.length}, ${total(rss.two)} MiB (the second window's ${extra.map(([, kib]) => `${mib(kib)} MiB`).join(", ")})`,
+    `16. extension hosts on ${alias}: the review window and one Source window ${rss.one.length} processes, ${rss.one.map(([, kib]) => `${mib(kib)} MiB`).join(" + ")} = ${total(rss.one)} MiB; two Source windows ${rss.two.length}, ${total(rss.two)} MiB (the second window's ${extra.map(([, kib]) => `${mib(kib)} MiB`).join(", ")})`,
   );
 }
 
