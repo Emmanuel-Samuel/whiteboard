@@ -13,6 +13,7 @@ import type { IStorageService } from "../../../platform/storage/common/storage.j
 import type { IWorkbenchEnvironmentService } from "../../../workbench/services/environment/common/environmentService.js";
 import type { IRemoteAgentConnection, IRemoteAgentService } from "../../../workbench/services/remote/common/remoteAgentService.js";
 import type { IStatusbarEntry, IStatusbarService } from "../../../workbench/services/statusbar/browser/statusbar.js";
+import type { ReviewGatewayHostState } from "../../common/reviewProtocol.js";
 import { ReviewSourceWindowHostState, showSourceWindowHostState } from "./reviewSourceWindowHostState.js";
 import type { ReviewWindowHosts } from "./reviewWindowAuthorityResolver.js";
 
@@ -34,8 +35,9 @@ function fakes() {
 			return { close: () => void closed++ };
 		},
 	} as unknown as INotificationService;
-	let state = "online";
-	const hosts: ReviewWindowHosts = { endpoint: async () => undefined, state: async () => ({ alias: "devbox", state }) };
+	let state: ReviewGatewayHostState["state"] = "online";
+	let polls = 0;
+	const hosts: ReviewWindowHosts = { endpoint: async () => undefined, state: async () => (polls++, { alias: "devbox", state }) };
 	const connection = new Emitter<PersistentConnectionEvent>();
 	return {
 		statusbar,
@@ -43,33 +45,35 @@ function fakes() {
 		hosts,
 		connection: { onDidStateChange: connection.event } as unknown as IRemoteAgentConnection,
 		fire: (type: PersistentConnectionEventType) => connection.fire({ type } as PersistentConnectionEvent),
-		set: (next: string) => void (state = next),
+		set: (next: ReviewGatewayHostState["state"]) => void (state = next),
+		polls: () => polls,
 		last: () => entries.at(-1),
 		shown,
 		closed: () => closed,
 	};
 }
 
-const tick = () => new Promise((resolve) => setTimeout(resolve, 30));
+async function until(check: () => boolean) {
+	while (!check()) await new Promise((resolve) => setTimeout(resolve, 1));
+}
 
 test("shows the alias while online, the offline state within one poll, and restores it", async () => {
 	const f = fakes();
 	const watch = showSourceWindowHostState("abc-1", f.hosts, f.statusbar, f.notifications, f.connection, undefined, 5);
 	try {
-		await tick();
-		assert.equal(f.last()?.text, "devbox");
+		await until(() => f.last()?.text === "devbox");
 		assert.notEqual(f.last()?.kind, "warning");
 		assert.equal(f.shown.length, 0);
 
 		f.set("offline");
-		await tick();
-		assert.equal(f.last()?.text, OFFLINE);
+		await until(() => f.last()?.text === OFFLINE);
 		assert.equal(f.last()?.kind, "warning");
 		assert.deepEqual(f.shown.map((n) => [n.message, n.actions]), [["devbox is offline. The window reconnects when it is back.", undefined]]);
 
 		f.fire(PersistentConnectionEventType.ConnectionLost);
 		f.set("online");
-		await tick();
+		const polls = f.polls();
+		await until(() => f.polls() >= polls + 2);
 		assert.equal(f.last()?.text, OFFLINE, "the window's own connection is still down");
 		assert.equal(f.closed(), 0);
 
@@ -79,8 +83,7 @@ test("shows the alias while online, the offline state within one poll, and resto
 		assert.equal(f.closed(), 1);
 
 		f.set("unreachable");
-		await tick();
-		assert.equal(f.last()?.text, OFFLINE);
+		await until(() => f.last()?.text === OFFLINE);
 		assert.equal(f.shown.length, 1, "no second notification in the same window");
 	} finally {
 		watch.dispose();
@@ -117,12 +120,11 @@ test("a window restored before main knows its host's alias names it by the alias
 		return { f, contribution };
 	};
 	const first = open({ alias: "wb-test-a", state: "online" });
-	await tick();
+	await until(() => first.f.last()?.text === "wb-test-a");
 	first.contribution.dispose();
 	const { f, contribution } = open({ state: "offline" });
 	try {
-		await tick();
-		assert.equal(f.last()?.text, "wb-test-a — offline, reconnecting…");
+		await until(() => f.last()?.text === "wb-test-a — offline, reconnecting…");
 		assert.equal(f.shown[0]?.message, "wb-test-a is offline. The window reconnects when it is back.");
 	} finally {
 		contribution.dispose();
