@@ -190,10 +190,13 @@ jobs:
           pnpm -r --filter '!@dev.fast/review-desktop' --filter '!./diffr/**' --workspace-concurrency=1 --if-present typecheck
 
       # Typecheck prepared the shared tutorial assets before concurrent pretests.
+      # Desktop's tests build a remote tarball, which starves concurrent browser
+      # tests of CPU until Chromium drops their module fetches; run them last.
       - name: Test
         run: |
           node --test "scripts/**/*.test.mjs"
-          pnpm -r --filter '!./diffr/**' --no-sort --workspace-concurrency=3 --if-present test
+          pnpm -r --filter '!./diffr/**' --filter '!@dev.fast/review-desktop' --no-sort --workspace-concurrency=3 --if-present test
+          pnpm --filter @dev.fast/review-desktop test
 
       - name: Upload browser test diagnostics
         if: failure()

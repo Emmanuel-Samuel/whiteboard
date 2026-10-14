@@ -258,12 +258,7 @@ export class ReviewDesktopConnectionService extends Disposable implements IRevie
 	}
 
 	async getRemoteLanguageEndpoint(serverId: string): Promise<ReviewRemoteLanguageEndpoint | undefined> {
-		const endpoint: unknown = await this.mainProcessService.getChannel(REVIEW_DESKTOP_CHANNEL).call("getRemoteLanguageEndpoint", serverId);
-		if (typeof endpoint !== "object" || endpoint === null) return undefined;
-		const { host, port, connectionToken } = endpoint as Record<string, unknown>;
-		return typeof host === "string" && Number.isInteger(port) && typeof connectionToken === "string"
-			? { host, port: port as number, connectionToken }
-			: undefined;
+		return this.mainProcessService.getChannel(REVIEW_DESKTOP_CHANNEL).call("getRemoteLanguageEndpoint", serverId);
 	}
 
 	async installRemoteHost(alias: string): Promise<void> {
