@@ -6,6 +6,7 @@ import { iconStyles } from "@canvas/ui/icon-styles";
 import { ArrowRightIcon, CodeIcon } from "@canvas/ui/icons";
 import { surfaceStyles } from "@canvas/ui/surface";
 import { textStyles } from "@canvas/ui/text";
+import { useTooltip } from "@canvas/ui/tooltip";
 import {
   type ReviewCommitSummary,
   type ReviewDiffFileWire,
@@ -23,7 +24,6 @@ import { chevronMarker } from "./markers.stylex";
 import { shortRef } from "./review-branch-range";
 import { tokens } from "./tokens.stylex";
 import { captureUiEvent } from "./ui-telemetry";
-import { useTooltip } from "./use-tooltip";
 
 type OpenCommitDiff = (
   commit: ReviewCommitSummary,

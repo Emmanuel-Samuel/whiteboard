@@ -9,6 +9,7 @@ import {
   GripIcon,
   MinusIcon,
 } from "@canvas/ui/icons";
+import { useTooltip } from "@canvas/ui/tooltip";
 import * as stylex from "@stylexjs/stylex";
 import {
   type PointerEvent,
@@ -45,7 +46,6 @@ import { menuStyles } from "./ui/menu";
 import { useDismissOnOutside } from "./ui/popover";
 import { surfaceStyles } from "./ui/surface";
 import { textStyles } from "./ui/text";
-import { useTooltip } from "./use-tooltip";
 
 export type { AskPresence };
 
