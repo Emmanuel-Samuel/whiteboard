@@ -263,7 +263,7 @@ const styles = stylex.create({
   pullRequest: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "5px",
+    gap: space.s4,
     color: tokens.accent,
     fontWeight: fontWeight.medium,
     textDecoration: "none",
@@ -286,12 +286,12 @@ const styles = stylex.create({
   branch: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "7px",
+    gap: space.s8,
     boxSizing: "border-box",
     minWidth: 0,
     minHeight: "26px",
     maxWidth: "100%",
-    padding: `3px ${space.s10}`,
+    padding: `${space.s4} ${space.s10}`,
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: tokens.rule,

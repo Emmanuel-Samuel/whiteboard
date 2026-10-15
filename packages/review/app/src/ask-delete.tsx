@@ -143,7 +143,7 @@ const styles = stylex.create({
   armed: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "5px",
+    gap: space.s4,
     width: "auto",
     padding: `0 ${space.s8}`,
     borderRadius: radius.control,

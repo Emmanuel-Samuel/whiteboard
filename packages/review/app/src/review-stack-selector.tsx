@@ -221,7 +221,7 @@ function LayerRow({
 
 const styles = stylex.create({
   trigger: {
-    gap: "7px",
+    gap: space.s8,
     padding: `0 ${space.s8}`,
     fontFamily: tokens.fontMono,
     fontSize: fontSize.small,
@@ -254,7 +254,7 @@ const styles = stylex.create({
     alignItems: "center",
     width: "100%",
     minHeight: "40px",
-    padding: `5px ${space.s8}`,
+    padding: `${space.s4} ${space.s8}`,
     borderRadius: radius.control,
     color: tokens.ink,
     font: "inherit",
@@ -282,7 +282,7 @@ const styles = stylex.create({
   },
   title: {
     fontSize: fontSize.small,
-    lineHeight: "15px",
+    lineHeight: leading.px16,
   },
   titleCurrent: {
     fontWeight: fontWeight.semibold,

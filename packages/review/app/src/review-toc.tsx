@@ -458,7 +458,7 @@ const styles = stylex.create({
       [stylex.env.narrow]: "min(248px, calc(100cqi - 16px))",
     },
     overflow: "visible",
-    padding: `${space.s20} ${space.s18} 22px ${space.s20}`,
+    padding: `${space.s20} ${space.s18} ${space.s24} ${space.s20}`,
     transition: "none",
     borderColor: tokens.transparent,
     backgroundColor: tokens.transparent,

@@ -393,7 +393,7 @@ const styles = stylex.create({
     cursor: "pointer",
   },
   historyLogo: {
-    marginTop: "3px",
+    marginTop: space.s4,
   },
   historyText: {
     display: "flex",

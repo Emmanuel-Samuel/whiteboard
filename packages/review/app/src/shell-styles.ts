@@ -284,17 +284,17 @@ export const shellStyles = stylex.create({
     // Let macOS hide the document scrollbar when idle.
     scrollbarWidth: "thin",
     padding: {
-      default: `${tokens.reviewPageTop} 52px calc(max(120px, var(--review-bottom-scroll-padding, 0px)) + var(--review-toc-tail, 0px))`,
+      default: `${tokens.reviewPageTop} ${space.s48} calc(max(120px, var(--review-bottom-scroll-padding, 0px)) + var(--review-toc-tail, 0px))`,
       "@container review-content (max-width: 1180px)": {
-        default: `${tokens.reviewPageTop} 42px ${space.s120}`,
+        default: `${tokens.reviewPageTop} ${space.s40} ${space.s120}`,
         "@container review-content (max-width: 1080px)": {
           default: `${tokens.reviewPageTop} ${space.s24} ${space.s120}`,
           [stylex.env.narrow]:
-            `22px ${space.s8} calc(96px + var(--review-toc-tail, 0px))`,
+            `${space.s24} ${space.s8} calc(96px + var(--review-toc-tail, 0px))`,
         },
       },
       [stylex.env.narrow]:
-        `22px ${space.s8} calc(96px + var(--review-toc-tail, 0px))`,
+        `${space.s24} ${space.s8} calc(96px + var(--review-toc-tail, 0px))`,
     },
   },
   documentView: {

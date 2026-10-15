@@ -1056,7 +1056,7 @@ const batonStyles = stylex.create({
   chip: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "7px",
+    gap: space.s8,
     color: tokens.diffRemoved,
     fontFamily: tokens.chromeFont,
     fontSize: tokens.chromeFontSizeSmall,
@@ -1101,7 +1101,7 @@ const mapSettingsStyles = stylex.create({
     justifyContent: "space-between",
     gap: space.s14,
     minHeight: "50px",
-    padding: `${space.s10} 13px`,
+    padding: `${space.s10} ${space.s12}`,
     borderBottomWidth: "1px",
     borderBottomStyle: "solid",
     borderBottomColor: tokens.rule,

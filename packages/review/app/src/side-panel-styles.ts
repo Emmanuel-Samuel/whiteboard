@@ -110,7 +110,7 @@ export const panelStyles = stylex.create({
   title: {
     display: "flex",
     alignItems: "center",
-    gap: "9px",
+    gap: space.s8,
     minWidth: 0,
   },
   kicker: {
@@ -251,7 +251,7 @@ export const tourStyles = stylex.create({
     justifyContent: "space-between",
     gap: space.s12,
     margin: {
-      default: `${space.s16} ${space.s16} ${space.s16} 52px`,
+      default: `${space.s16} ${space.s16} ${space.s16} ${space.s48}`,
       [stylex.env.narrow]:
         `${space.s16} ${space.s8} ${space.s16} ${RAIL_NARROW}`,
     },
@@ -276,7 +276,10 @@ export const tourStyles = stylex.create({
     paddingRight: { default: space.s16, [stylex.env.narrow]: space.s8 },
     // The rail's x in the stop, for the rail and its faint runs between a
     // step's code cards.
-    "--review-tour-rail-x": { default: "29px", [stylex.env.narrow]: "19px" },
+    "--review-tour-rail-x": {
+      default: space.s28,
+      [stylex.env.narrow]: space.s18,
+    },
   },
   rail: {
     position: "relative",
@@ -354,7 +357,7 @@ export const tourStyles = stylex.create({
     gap: space.s8,
   },
   title: {
-    margin: "3px 0 0",
+    margin: `${space.s4} 0 0`,
     color: tokens.ink,
     fontSize: fontSize.heading,
     lineHeight: leading.px24,
@@ -367,6 +370,6 @@ export const tourStyles = stylex.create({
     color: tokens.inkMuted,
     fontFamily: tokens.fontMono,
     fontSize: fontSize.small,
-    lineHeight: "15px",
+    lineHeight: leading.px16,
   },
 });

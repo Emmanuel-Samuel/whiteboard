@@ -344,7 +344,7 @@ const styles = stylex.create({
   timeline: {
     position: "relative",
     marginLeft: space.s6,
-    paddingLeft: "22px",
+    paddingLeft: space.s24,
     "::before": {
       position: "absolute",
       top: `-${space.s8}`,

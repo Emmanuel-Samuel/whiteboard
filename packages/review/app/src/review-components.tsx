@@ -1389,7 +1389,7 @@ const sectionStyles = stylex.create({
   toggle: {
     position: "absolute",
     top: space.s4,
-    left: "-29px",
+    left: `-${space.s28}`,
   },
   heading: {
     minWidth: 0,

@@ -176,7 +176,7 @@ export const documentStyles = stylex.create({
     scrollMarginTop: { default: null, [inDocument()]: "24px" },
     width: { default: null, [inDocumentBlock()]: proseColumn },
     maxWidth: { default: null, [inDocumentBlock()]: proseMaxWidth },
-    margin: { default: null, [inDocument()]: `30px auto ${space.s10}` },
+    margin: { default: null, [inDocument()]: `${space.s32} auto ${space.s10}` },
     marginTop: { default: null, [scratchpadOpening()]: 0 },
     color: { default: null, [inDocument()]: tokens.ink },
     fontFamily: { default: null, [inDocument()]: tokens.fontSerif },
@@ -251,7 +251,7 @@ export const documentStyles = stylex.create({
     },
   },
   code: {
-    padding: { default: null, [inDocument()]: `${space.s2} 5px` },
+    padding: { default: null, [inDocument()]: `${space.s2} ${space.s4}` },
     borderRadius: { default: null, [inDocument()]: radius.small },
     backgroundColor: {
       default: null,
@@ -273,7 +273,7 @@ export const documentStyles = stylex.create({
     color: { default: null, [inDocument()]: tokens.ink },
     fontFamily: { default: null, [inDocument()]: tokens.fontMono },
     fontSize: { default: null, [inDocument()]: fontSize.ui },
-    lineHeight: { default: null, [inDocument()]: 1.55 },
+    lineHeight: { default: null, [inDocument()]: leading.normal },
     tableLayout: { default: null, [inDocument()]: "fixed" },
   },
   cell: {

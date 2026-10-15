@@ -1225,7 +1225,7 @@ const styles = stylex.create({
     color: tokens.inkMuted,
     fontFamily: tokens.fontSerif,
     fontSize: fontSize.ui,
-    lineHeight: "17px",
+    lineHeight: leading.px16,
   },
   pillPassage: {
     flex: "0 1 auto",

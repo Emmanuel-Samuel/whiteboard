@@ -468,7 +468,7 @@ const styles = stylex.create({
     position: "absolute",
     top: `-${space.s20}`,
     left: "50%",
-    padding: `${space.s2} 7px`,
+    padding: `${space.s2} ${space.s8}`,
     borderRadius: radius.pill,
     backgroundColor: tokens.ink,
     color: tokens.surface,
@@ -581,7 +581,7 @@ const styles = stylex.create({
   },
   shadow: {
     position: "absolute",
-    bottom: "-3px",
+    bottom: `-${space.s4}`,
     left: "50%",
     width: `${SHADOW_WIDTH}px`,
     height: "4px",
