@@ -1,5 +1,4 @@
 import {
-  elevation,
   fontSize,
   fontWeight,
   motion,
@@ -137,15 +136,8 @@ export const onboardingStyles = stylex.create({
   },
   backLink: {
     alignSelf: "flex-start",
-    paddingBlock: "0 4px",
-    paddingInline: 0,
-    borderWidth: 0,
-    color: { default: tokens.inkMuted, ":hover": tokens.ink },
-    backgroundColor: "transparent",
-    cursor: "pointer",
+    marginInline: "-10px",
     fontFamily: tokens.fontMono,
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.medium,
   },
   titleBar: {
     display: "flex",
@@ -243,13 +235,10 @@ export const onboardingStyles = stylex.create({
     paddingTop: "40px",
   },
   primary: {
-    gap: "10px",
-    height: "auto",
-    paddingBlock: "14px",
-    paddingInline: "24px 22px",
-    borderRadius: radius.surface,
-    fontSize: fontSize.reading,
-    boxShadow: { default: elevation.popover, ":disabled": "none" },
+    gap: "8px",
+    height: "36px",
+    paddingInline: "16px 14px",
+    fontSize: fontSize.ui,
   },
   keyHint: {
     color: tokens.inkFaint,

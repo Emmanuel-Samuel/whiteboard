@@ -1,5 +1,5 @@
 import { AGENT_LOGOS } from "@canvas/agent-logos";
-import { CopyIcon, RefreshIcon, SearchIcon } from "@canvas/icons";
+import { FolderIcon, RefreshIcon, SearchIcon } from "@canvas/icons";
 import { OptionMenu } from "@canvas/option-menu";
 import {
   elevation,
@@ -7,12 +7,15 @@ import {
   fontWeight,
   motion,
   radius,
-  tracking,
 } from "@canvas/scale.stylex";
 import { tokens } from "@canvas/tokens.stylex";
 import { Button, IconButton, buttonStyles } from "@canvas/ui/button";
+import { CopyIcon } from "@canvas/ui/copy";
 import { Shortcut } from "@canvas/ui/kbd";
+import { SegmentedControl, segmentStyles } from "@canvas/ui/segmented";
+import { textStyles } from "@canvas/ui/text";
 import { fieldStyles } from "@canvas/ui/text-field";
+import { useTooltip } from "@canvas/use-tooltip";
 import type {
   ReviewCanvasSetupActions,
   ReviewOnboardingProject,
@@ -338,6 +341,13 @@ export function RunStep({
     ? `${agentName} runs here in ${agents.find((option) => option.id === agent)?.auto ? "auto mode" : "read-only mode"}`
     : undefined;
 
+  const filterTooltip = useTooltip<HTMLInputElement>(
+    "From git worktree list and gh pr list",
+  );
+
+  const refreshTooltip = useTooltip("Refresh branches, worktrees and PRs");
+  const drawTooltip = useTooltip(agentMode ?? "");
+
   const projectOptions = useMemo(() => {
     const shared = (name: string) =>
       projects.filter((project) => project.name === name).length > 1;
@@ -372,7 +382,7 @@ export function RunStep({
         )}
       >
         <div {...stylex.props(styles.project)}>
-          <FolderIcon />
+          <FolderIcon xstyle={styles.folderIcon} />
           {loading && !project ? (
             <span
               aria-label="Looking for your projects"
@@ -431,9 +441,9 @@ export function RunStep({
           <div {...stylex.props(styles.toolbar)}>
             <SearchIcon xstyle={styles.searchIcon} />
             <input
+              ref={filterTooltip}
               type="search"
               aria-label="Filter what to draw"
-              title="From git worktree list and gh pr list"
               placeholder={
                 targets.length
                   ? `Filter ${targets.length} branches, worktrees and PRs`
@@ -446,43 +456,43 @@ export function RunStep({
             />
             {discovered && !loading ? (
               <IconButton
+                ref={refreshTooltip}
                 disabled={refreshing}
                 aria-busy={refreshing || undefined}
                 onClick={() => void refresh()}
                 aria-label="Refresh branches, worktrees and PRs"
-                title="Refresh branches, worktrees and PRs"
               >
                 <RefreshIcon xstyle={refreshing && styles.refreshing} />
               </IconButton>
             ) : null}
             {kinds.length > 1 ? (
-              <div
-                role="group"
-                aria-label="Kind"
-                {...stylex.props(styles.kinds)}
-              >
-                {[{ kind: undefined, label: "All", count: 0 }, ...kinds].map(
-                  (option) => (
-                    <button
-                      key={option.label}
-                      type="button"
-                      aria-pressed={kind === option.kind}
-                      {...stylex.props(
-                        styles.kindTab,
-                        kind === option.kind && styles.kindTabOn,
-                      )}
-                      onClick={() => setKind(option.kind)}
-                    >
+              <SegmentedControl
+                label="Kind"
+                value={kind ?? "all"}
+                options={[
+                  { kind: "all" as const, label: "All", count: 0 },
+                  ...kinds,
+                ].map((option) => ({
+                  value: option.kind,
+                  label: (
+                    <>
                       {option.label}
                       {option.count ? (
-                        <span {...stylex.props(styles.kindCount)}>
+                        <span
+                          {...stylex.props(
+                            segmentStyles.segmentCount,
+                            kind === option.kind &&
+                              segmentStyles.segmentCountActive,
+                          )}
+                        >
                           {option.count}
                         </span>
                       ) : null}
-                    </button>
+                    </>
                   ),
-                )}
-              </div>
+                }))}
+                onChange={(next) => setKind(next === "all" ? undefined : next)}
+              />
             ) : null}
           </div>
           {loading ? (
@@ -543,18 +553,20 @@ export function RunStep({
           )}
           <div {...stylex.props(styles.prompt)}>
             <span {...stylex.props(styles.sectionHeader, styles.promptHeader)}>
-              <span {...stylex.props(styles.label)}>Prompt</span>
+              <span {...stylex.props(textStyles.eyebrow, styles.mono)}>
+                Prompt
+              </span>
               {/* The copy sits by what it copies. */}
-              <button
-                type="button"
+              <Button
+                variant="ghost"
                 aria-label="Copy prompt"
                 disabled={!canCopy}
                 onClick={copy}
-                {...stylex.props(buttonStyles.base, styles.copy)}
+                xstyle={styles.copy}
               >
                 <CopyIcon xstyle={styles.copyIcon} />
                 Copy
-              </button>
+              </Button>
             </span>
             <textarea
               aria-label="Prompt"
@@ -590,21 +602,21 @@ export function RunStep({
                 Copy for your agent, or use
               </span>
               <span {...stylex.props(styles.chip)}>
-                <button
-                  type="button"
+                <Button
+                  ref={drawTooltip}
+                  variant="ghost"
                   aria-label={`Draw with ${agentName}`}
                   aria-keyshortcuts="Meta+Enter"
-                  title={agentMode}
                   disabled={!canDraw}
                   onClick={() => void draw()}
-                  {...stylex.props(buttonStyles.base, styles.chipDraw)}
+                  xstyle={styles.chipDraw}
                 >
                   {AgentLogo ? <AgentLogo xstyle={styles.chipLogo} /> : null}
                   {starting ? "Starting…" : agentName}
                   <Shortcut aria-hidden="true" xstyle={styles.shortcut}>
                     ⌘↵
                   </Shortcut>
-                </button>
+                </Button>
                 {canChooseAgent ? (
                   <span aria-hidden="true" {...stylex.props(styles.chipRule)} />
                 ) : null}
@@ -659,7 +671,13 @@ function TargetRow({
       {...stylex.props(styles.target, selected && styles.targetSelected)}
       onClick={onSelect}
     >
-      <span {...stylex.props(styles.kind, selected && styles.kindSelected)}>
+      <span
+        {...stylex.props(
+          textStyles.eyebrow,
+          styles.kind,
+          selected && styles.kindSelected,
+        )}
+      >
         {target.kind === "pr" ? `PR #${target.number}` : target.kind}
       </span>
       <span {...stylex.props(styles.targetTitle)}>
@@ -685,20 +703,6 @@ function TargetRow({
         ) : null}
       </span>
     </button>
-  );
-}
-
-function FolderIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-      <path
-        d="M2 5.5A1.5 1.5 0 0 1 3.5 4h3.2l1.6 1.8h6.2A1.5 1.5 0 0 1 16 7.3v6.2a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 2 13.5z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 
@@ -784,14 +788,8 @@ const styles = stylex.create({
     paddingBlock: "16px 8px",
     paddingInline: "20px",
   },
-  label: {
-    color: tokens.inkFaint,
-    fontFamily: tokens.fontMono,
-    fontSize: fontSize.micro,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: tracking.caps,
-    textTransform: "uppercase",
-  },
+  mono: { fontFamily: tokens.fontMono },
+  folderIcon: { width: "18px", height: "18px" },
   source: {
     color: tokens.inkFaint,
     fontFamily: tokens.fontMono,
@@ -822,40 +820,12 @@ const styles = stylex.create({
     padding: 0,
     borderWidth: 0,
     outlineStyle: "none",
-    backgroundColor: "transparent",
+    backgroundColor: tokens.transparent,
     color: tokens.ink,
     fontFamily: tokens.fontMono,
     fontSize: fontSize.ui,
     "::placeholder": { color: tokens.inkFaint },
   },
-  kinds: {
-    display: "flex",
-    flexShrink: 0,
-    gap: "2px",
-    padding: "2px",
-    borderRadius: radius.control,
-    backgroundColor: tokens.well,
-  },
-  kindTab: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "6px",
-    height: "24px",
-    paddingInline: "10px",
-    borderWidth: 0,
-    borderRadius: radius.control,
-    backgroundColor: { default: "transparent", ":hover": tokens.chromeHoverBg },
-    color: tokens.inkMuted,
-    cursor: "pointer",
-    fontFamily: tokens.fontMono,
-    fontSize: fontSize.small,
-  },
-  kindTabOn: {
-    backgroundColor: { default: tokens.surface, ":hover": tokens.surface },
-    boxShadow: elevation.raised,
-    color: tokens.ink,
-  },
-  kindCount: { color: tokens.inkFaint },
   target: {
     display: "flex",
     alignItems: "center",
@@ -867,9 +837,12 @@ const styles = stylex.create({
     borderWidth: 0,
     borderLeftWidth: "2px",
     borderLeftStyle: "solid",
-    borderLeftColor: "transparent",
+    borderLeftColor: tokens.transparent,
     color: "inherit",
-    backgroundColor: { default: "transparent", ":hover": tokens.markerTint },
+    backgroundColor: {
+      default: tokens.transparent,
+      ":hover": tokens.markerTint,
+    },
     cursor: "pointer",
     font: "inherit",
     textAlign: "left",
@@ -881,12 +854,7 @@ const styles = stylex.create({
   kind: {
     width: "64px",
     flexShrink: 0,
-    color: tokens.inkFaint,
     fontFamily: tokens.fontMono,
-    fontSize: fontSize.micro,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: tracking.caps,
-    textTransform: "uppercase",
   },
   kindSelected: { color: tokens.accent },
   // The name keeps its room; the detail after it gives way first.
@@ -952,11 +920,8 @@ const styles = stylex.create({
   alert: { paddingInline: "12px" },
   // A quiet text control in the prompt's header.
   copy: {
-    height: "24px",
     marginBlock: "-4px",
-    marginInlineEnd: "-8px",
-    paddingInline: "8px",
-    color: { default: tokens.inkMuted, ":hover:not(:disabled)": tokens.ink },
+    marginInlineEnd: "-10px",
     fontFamily: tokens.fontMono,
     fontSize: fontSize.small,
   },
@@ -990,7 +955,7 @@ const styles = stylex.create({
     gap: "8px",
     height: "28px",
     paddingInline: "8px",
-    color: tokens.ink,
+    color: { default: tokens.ink, ":hover:not(:disabled)": tokens.ink },
     fontFamily: tokens.fontMono,
     fontSize: fontSize.ui,
     borderTopRightRadius: 0,
