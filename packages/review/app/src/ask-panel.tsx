@@ -63,7 +63,7 @@ import { useLatest, useThread } from "./ask-thread-stream";
 import { AskAgentTurn, AskWorking, turns } from "./ask-turn";
 import { canvasQueryKeys } from "./canvas-query";
 import { useHostActionButton } from "./connection-chip";
-import { formatRelativeTime } from "./format";
+import { countLabel, formatRelativeTime } from "./format";
 import { useReviewSession } from "./host/review-session";
 import { useReviewHostDown } from "./remote-host-state";
 import { useAskKey, useOptionalReviewPanelStore } from "./review-panel";
@@ -936,9 +936,7 @@ function answeringStatus(thread: AskThreadState | null) {
         entry.status === "completed",
     ).length ?? 0;
 
-  return read
-    ? `Answering · ${read} ${read === 1 ? "file" : "files"} read`
-    : "Answering…";
+  return read ? `Answering · ${countLabel(read, "file")} read` : "Answering…";
 }
 
 /** The images sent with a question. Its files show as its @ mentions. */

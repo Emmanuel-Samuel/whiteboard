@@ -18,7 +18,7 @@ import { useMemo, useState } from "react";
 import { canvasQueryKeys } from "./canvas-query";
 import { DiffCount } from "./diff-count";
 import { FileMark } from "./file-mark";
-import { countLabel } from "./format";
+import { countLabel, formatClockTime } from "./format";
 import { useReviewSession } from "./host/review-session";
 import { chevronMarker } from "./markers.stylex";
 import { shortRef } from "./review-branch-range";
@@ -176,7 +176,7 @@ function CommitRow({
           </IconButton>
         </span>
         <span {...stylex.props(styles.meta)}>
-          {commit.author} · {formatCommitTime(commit.authoredAt)} ·{" "}
+          {commit.author} · {formatClockTime(commit.authoredAt)} ·{" "}
           {countLabel(commit.fileCount, "file")}{" "}
           <DiffCount
             additions={commit.additions}
@@ -290,13 +290,6 @@ export function groupCommitsByDate(commits: readonly ReviewCommitSummary[]) {
   }
 
   return groups;
-}
-
-function formatCommitTime(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
 }
 
 const styles = stylex.create({
