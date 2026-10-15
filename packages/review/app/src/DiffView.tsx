@@ -578,7 +578,7 @@ export function ReviewDiffView({
           />
         )}
         {lenses.error && (
-          <div {...stylex.props(styles.error)} role="alert">
+          <div {...stylex.props(textStyles.error, styles.error)} role="alert">
             {lenses.error}
           </div>
         )}
@@ -1310,7 +1310,6 @@ const styles = stylex.create({
   },
   error: {
     padding: "8px 12px",
-    color: tokens.changeRemoved,
   },
 });
 

@@ -623,7 +623,7 @@ function PresenceStatus({ presence }: { presence: AskPresence }) {
         textStyles.truncate,
         styles.status,
         presence.tone === "waiting" && styles.statusWaiting,
-        presence.tone === "failed" && styles.statusFailed,
+        presence.tone === "failed" && textStyles.error,
       )}
     >
       {presence.status}
@@ -1148,9 +1148,6 @@ const styles = stylex.create({
   },
   statusWaiting: {
     color: tokens.changeModified,
-  },
-  statusFailed: {
-    color: tokens.changeRemoved,
   },
   open: {
     color: tokens.ink,

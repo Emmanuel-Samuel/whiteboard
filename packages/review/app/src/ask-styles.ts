@@ -51,7 +51,6 @@ export const askPanelStyles = stylex.create({
   },
   error: {
     margin: 0,
-    color: tokens.changeRemoved,
     fontFamily: tokens.fontMono,
     fontSize: fontSize.body,
     lineHeight: "18px",
