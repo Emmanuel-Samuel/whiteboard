@@ -59,7 +59,7 @@ export function ReviewDocumentMetaLine({
     diffFiles.status === "loaded" ? reviewDiffStats(diffFiles) : null;
 
   const updatedLabel =
-    meta?.updatedAtMs != null && relativeTimeNowMs != null
+    Number.isFinite(meta?.updatedAtMs) && relativeTimeNowMs != null
       ? formatRelativeTime(meta.updatedAtMs, relativeTimeNowMs)
       : null;
 
