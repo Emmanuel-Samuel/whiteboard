@@ -1,5 +1,6 @@
 import { Button, IconButton, buttonStyles } from "@canvas/ui/button";
 import { focusStyles } from "@canvas/ui/focus";
+import { iconStyles } from "@canvas/ui/icon-styles";
 import { StatusBanner } from "@canvas/ui/status-banner";
 import { surfaceStyles } from "@canvas/ui/surface";
 import { textStyles } from "@canvas/ui/text";
@@ -37,7 +38,6 @@ import {
 } from "./authoring-activity";
 import { BugReportControl } from "./bug-report-dialog";
 import { LanguageServerChip } from "./connection-chip";
-import { controlStyles } from "./controls-styles";
 import {
   ReviewDebugSettingsProvider,
   type ReviewNodeTint,
@@ -684,7 +684,7 @@ function ReviewLayoutContent({
                 session.surface.post({ name: "joinDiscord", args: {} });
               }}
             >
-              <DiscordIcon xstyle={controlStyles.chromeIcon} />
+              <DiscordIcon xstyle={iconStyles.chrome} />
             </IconButton>
             <BugReportControl />
             <ReviewBatonChip outcome={review.submissionOutcome} />

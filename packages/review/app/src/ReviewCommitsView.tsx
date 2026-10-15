@@ -1,6 +1,7 @@
 import { fontSize, fontWeight, radius } from "@canvas/scale.stylex";
 import { IconButton, buttonStyles } from "@canvas/ui/button";
 import { CopyButton } from "@canvas/ui/copy";
+import { iconStyles } from "@canvas/ui/icon-styles";
 import { textStyles } from "@canvas/ui/text";
 import {
   type ReviewCommitSummary,
@@ -11,7 +12,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import { canvasQueryKeys } from "./canvas-query";
-import { controlStyles } from "./controls-styles";
 import { DiffCount } from "./diff-count";
 import { FileMark } from "./file-mark";
 import { countLabel } from "./format";
@@ -150,7 +150,7 @@ function CommitRow({
           <CopyButton
             text={commit.commit}
             label="Copy commit SHA"
-            iconStyle={controlStyles.chromeIcon}
+            iconStyle={iconStyles.chrome}
           />
           <IconButton
             ref={openTooltip}
@@ -158,7 +158,7 @@ function CommitRow({
             aria-label="Open commit diff"
             onClick={() => onOpenDiff(commit, "row")}
           >
-            <CodeIcon xstyle={controlStyles.chromeIcon} />
+            <CodeIcon xstyle={iconStyles.chrome} />
           </IconButton>
         </span>
         <span {...stylex.props(styles.meta)}>

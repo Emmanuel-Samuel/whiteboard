@@ -1,5 +1,6 @@
 import { buttonStyles } from "@canvas/ui/button";
 import { focusStyles } from "@canvas/ui/focus";
+import { iconStyles } from "@canvas/ui/icon-styles";
 import { textStyles } from "@canvas/ui/text";
 import type {
   ReviewHostStatus,
@@ -62,7 +63,6 @@ import { useLatest, useThread } from "./ask-thread-stream";
 import { AskAgentTurn, AskWorking, turns } from "./ask-turn";
 import { canvasQueryKeys } from "./canvas-query";
 import { useHostActionButton } from "./connection-chip";
-import { controlStyles } from "./controls-styles";
 import { formatRelativeTime } from "./format";
 import { useReviewSession } from "./host/review-session";
 import { ArrowUpIcon, ImageIcon, LockIcon } from "./icons";
@@ -602,7 +602,7 @@ export function AskPanelContent({
       current={access}
       disabled={settingsDisabled}
       quiet
-      icon={readOnly ? <LockIcon xstyle={controlStyles.inlineIcon} /> : null}
+      icon={readOnly ? <LockIcon xstyle={iconStyles.inline} /> : null}
       onPick={(value) => {
         const parsed = askPermissionsSchema.safeParse(value);
 
@@ -616,7 +616,7 @@ export function AskPanelContent({
     >
       {readOnly ? (
         <>
-          <LockIcon xstyle={controlStyles.inlineIcon} />
+          <LockIcon xstyle={iconStyles.inline} />
           Read-only
         </>
       ) : (
@@ -892,7 +892,7 @@ function ToLatestButton({ onClick }: { onClick: () => void }): ReactElement {
       aria-label={label}
       onClick={onClick}
     >
-      <ArrowUpIcon xstyle={[controlStyles.chromeIcon, styles.toLatestIcon]} />
+      <ArrowUpIcon xstyle={[iconStyles.chrome, styles.toLatestIcon]} />
     </IconButton>
   );
 }
@@ -976,7 +976,7 @@ function AskImageChip({ name }: { name: string }): ReactElement {
       variant="pill"
       xstyle={styles.attachment}
     >
-      <ImageIcon xstyle={controlStyles.inlineIcon} />
+      <ImageIcon xstyle={iconStyles.inline} />
       {name}
     </Chip>
   );

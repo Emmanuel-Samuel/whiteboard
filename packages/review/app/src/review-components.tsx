@@ -1,6 +1,7 @@
 import { documentType } from "@canvas/document-type.stylex";
 import { fontSize, fontWeight } from "@canvas/scale.stylex";
 import { IconButton, buttonStyles } from "@canvas/ui/button";
+import { iconStyles } from "@canvas/ui/icon-styles";
 import {
   OverlayScrollbar,
   overlayScrollbarStyles,
@@ -40,7 +41,6 @@ import {
 import { AskPills, AskSlot, AskWindow } from "./ask-window";
 import { AuthoredCodeSurface } from "./authored-code-surface";
 import { SourceCodePeek } from "./CodePeek";
-import { controlStyles } from "./controls-styles";
 import { documentStyles } from "./document-styles";
 import { drawStyles } from "./draw-styles";
 import { findWhitespaceNormalizedSpan } from "./highlighted-text";
@@ -226,7 +226,7 @@ function ReviewPanelFrame({
             aria-label={closeLabel}
             data-tour-target={tour ? "tour-close" : undefined}
           >
-            <CloseIcon xstyle={controlStyles.inertIcon} />
+            <CloseIcon xstyle={iconStyles.inert} />
           </IconButton>
         </div>
       </header>
@@ -668,9 +668,7 @@ function OpenAsk({ askKey }: { askKey: number }) {
                   aria-label="Pop out Ask"
                   onClick={() => store.getState().popOutAsk(askKey)}
                 >
-                  <PopOutIcon
-                    xstyle={[controlStyles.inertIcon, controlStyles.chromeIcon]}
-                  />
+                  <PopOutIcon xstyle={[iconStyles.inert, iconStyles.chrome]} />
                 </IconButton>
                 <IconButton
                   ref={minimizeTooltip}
@@ -678,9 +676,7 @@ function OpenAsk({ askKey }: { askKey: number }) {
                   aria-label="Minimize Ask"
                   onClick={() => store.getState().minimizeAsk(askKey)}
                 >
-                  <MinusIcon
-                    xstyle={[controlStyles.inertIcon, controlStyles.chromeIcon]}
-                  />
+                  <MinusIcon xstyle={[iconStyles.inert, iconStyles.chrome]} />
                 </IconButton>
               </>
             }
@@ -925,7 +921,7 @@ function CodeReviewPeekPanel({
               }}
               aria-label={`Show ${anchor.title} in software map`}
             >
-              <MapPinIcon xstyle={controlStyles.inertIcon} />
+              <MapPinIcon xstyle={iconStyles.inert} />
             </IconButton>
           </div>
         ) : null}
@@ -1316,7 +1312,7 @@ function GuidedTourStopMain({
                 onClose();
               }}
             >
-              <MapPinIcon xstyle={controlStyles.inertIcon} />
+              <MapPinIcon xstyle={iconStyles.inert} />
             </IconButton>
           </div>
         ) : null}

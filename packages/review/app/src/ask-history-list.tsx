@@ -1,5 +1,6 @@
 import { buttonStyles } from "@canvas/ui/button";
 import { focusStyles } from "@canvas/ui/focus";
+import { iconStyles } from "@canvas/ui/icon-styles";
 import * as stylex from "@stylexjs/stylex";
 import { type ReactElement, useEffect } from "react";
 
@@ -8,7 +9,6 @@ import { resolveAskAnchor } from "./ask-anchor";
 import { AskDeleteButton } from "./ask-delete";
 import { useAskHistory } from "./ask-history";
 import { askPanelStyles } from "./ask-styles";
-import { controlStyles } from "./controls-styles";
 import { formatRelativeTime } from "./format";
 import { useReviewSession } from "./host/review-session";
 import { ChatIcon, HistoryIcon } from "./icons";
@@ -83,9 +83,7 @@ export function AskHistoryButton({ view }: { view: AskView }): ReactElement {
       disabled={!openHistory || allShown}
       onClick={openHistory}
     >
-      <HistoryIcon
-        xstyle={[controlStyles.inertIcon, controlStyles.chromeIcon]}
-      />
+      <HistoryIcon xstyle={[iconStyles.inert, iconStyles.chrome]} />
     </IconButton>
   );
 }
@@ -106,7 +104,7 @@ export function AskHistoryControl(): ReactElement | null {
       aria-label="Saved conversations"
       onClick={openHistory}
     >
-      <ChatIcon xstyle={controlStyles.chromeIcon} />
+      <ChatIcon xstyle={iconStyles.chrome} />
     </IconButton>
   );
 }
