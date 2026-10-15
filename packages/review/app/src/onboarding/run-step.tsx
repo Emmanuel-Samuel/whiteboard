@@ -1,4 +1,5 @@
-import { SearchIcon } from "@canvas/icons";
+import { AGENT_LOGOS } from "@canvas/agent-logos";
+import { CopyIcon, RefreshIcon, SearchIcon } from "@canvas/icons";
 import { OptionMenu } from "@canvas/option-menu";
 import {
   elevation,
@@ -9,7 +10,7 @@ import {
   tracking,
 } from "@canvas/scale.stylex";
 import { tokens } from "@canvas/tokens.stylex";
-import { Button, buttonStyles } from "@canvas/ui/button";
+import { Button, IconButton, buttonStyles } from "@canvas/ui/button";
 import { Shortcut } from "@canvas/ui/kbd";
 import { fieldStyles } from "@canvas/ui/text-field";
 import type {
@@ -19,10 +20,10 @@ import type {
   ReviewOnboardingTargetsResponse,
 } from "@dev.fast/review-protocol";
 import * as stylex from "@stylexjs/stylex";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { OnboardingClient, OnboardingRunAgent } from "./onboarding-client";
-import { type BackLink, ScreenHeader, useCopyKey } from "./onboarding-parts";
+import { type BackLink, ScreenHeader } from "./onboarding-parts";
 import { onboardingStyles } from "./onboarding-styles";
 
 const PICK_FOLDER = "\0pick";
@@ -63,6 +64,10 @@ const breathe = stylex.keyframes({
   "50%": { opacity: 0.45 },
 });
 
+const spin = stylex.keyframes({
+  to: { transform: "rotate(360deg)" },
+});
+
 /** The agents Whiteboard can run, best first. */
 const AGENT_ORDER: OnboardingRunAgent["id"][] = [
   "claude",
@@ -95,6 +100,11 @@ export function defaultPrompt(target: ReviewOnboardingTarget): string {
     : `Draw a whiteboard that walks me through ${target.branch}.`;
 }
 
+/** A folder's own name, on any platform's separators. */
+function folderName(folder: string) {
+  return folder.split(/[\\/]/).filter(Boolean).at(-1) ?? folder;
+}
+
 /** The name of the folder holding `folder`, on any platform's separators. */
 function parentName(folder: string) {
   return folder.split(/[\\/]/).filter(Boolean).at(-2) ?? folder;
@@ -123,6 +133,11 @@ export function RunStep({
   const [discovered, setDiscovered] =
     useState<ReviewOnboardingTargetsResponse>();
 
+  // The project being drawn from, shown as soon as it is chosen; its targets
+  // follow in `discovered`.
+  const [project, setProject] = useState<ReviewOnboardingProject>();
+  const opening = useRef(0);
+
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string>();
   const [query, setQuery] = useState("");
@@ -133,14 +148,22 @@ export function RunStep({
   const [agent, setAgent] = useState<OnboardingRunAgent["id"]>();
   const [error, setError] = useState<string>();
   const [starting, setStarting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const open = useCallback(
-    async (directory: string) => {
+    async (chosen: ReviewOnboardingProject) => {
+      // Only the latest choice lands, however the answers arrive.
+      const attempt = ++opening.current;
+
+      setProject(chosen);
+      setDiscovered(undefined);
       setLoading(true);
       setError(undefined);
 
       try {
-        const next = await client.targets(directory);
+        const next = await client.targets(chosen.path);
+
+        if (attempt !== opening.current) return;
 
         // A checkout of the base branch has nothing to draw against it;
         // start from the first target that has.
@@ -149,6 +172,7 @@ export function RunStep({
             (target) => target.kind !== "branch" || target.branch !== next.base,
           ) ?? next.targets[0];
 
+        setProject(next.project);
         setDiscovered(next);
         setSelected(first ? targetKey(first) : undefined);
         setQuery("");
@@ -156,18 +180,47 @@ export function RunStep({
         setEdited(false);
         setPrompt(first ? defaultPrompt(first) : "");
       } catch (cause) {
+        if (attempt !== opening.current) return;
         setError(cause instanceof Error ? cause.message : String(cause));
-      } finally {
-        setLoading(false);
       }
+
+      if (attempt === opening.current) setLoading(false);
     },
     [client],
   );
 
+  // The list only changes when asked: it holds still under the pointer while
+  // agents move branches and worktrees. The choice, filter and prompt stay.
+  const refresh = useCallback(async () => {
+    if (!discovered) return;
+    // A project chosen meanwhile wins over this answer.
+    const attempt = opening.current;
+
+    setRefreshing(true);
+    setError(undefined);
+
+    try {
+      const next = await client.targets(discovered.project.path);
+
+      if (attempt !== opening.current) return;
+      setDiscovered(next);
+      setSelected((current) =>
+        next.targets.some((candidate) => targetKey(candidate) === current)
+          ? current
+          : undefined,
+      );
+    } catch (cause) {
+      if (attempt === opening.current)
+        setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setRefreshing(false);
+    }
+  }, [client, discovered]);
+
   const pickFolder = useCallback(async () => {
     const folder = await setupActions.pickFolder();
 
-    if (folder) await open(folder);
+    if (folder) await open({ path: folder, name: folderName(folder) });
   }, [open, setupActions]);
 
   useEffect(() => {
@@ -187,7 +240,7 @@ export function RunStep({
         setAgents(available);
         setAgent((current) => current ?? available[0]?.id);
 
-        if (known[0]) void open(known[0].path);
+        if (known[0]) void open(known[0]);
         else setLoading(false);
       },
       (cause: unknown) => {
@@ -229,6 +282,8 @@ export function RunStep({
   };
 
   const agentName = agents.find((candidate) => candidate.id === agent)?.name;
+  const AgentLogo = agent ? AGENT_LOGOS[agent] : undefined;
+  const canChooseAgent = agents.length > 1;
 
   const canDraw =
     !starting &&
@@ -264,8 +319,6 @@ export function RunStep({
     if (!canCopy) return;
     onCopy(prompt.trim());
   }, [canCopy, onCopy, prompt]);
-
-  useCopyKey(canCopy, copy);
 
   // ⌘↵ draws from anywhere on the screen, the prompt included.
   useEffect(() => {
@@ -320,16 +373,7 @@ export function RunStep({
       >
         <div {...stylex.props(styles.project)}>
           <FolderIcon />
-          {discovered ? (
-            <>
-              <span {...stylex.props(styles.projectName)}>
-                {discovered.project.name}
-              </span>
-              <span {...stylex.props(styles.projectPath)}>
-                {discovered.project.path}
-              </span>
-            </>
-          ) : loading ? (
+          {loading && !project ? (
             <span
               aria-label="Looking for your projects"
               {...stylex.props(styles.projectPlaceholder)}
@@ -338,24 +382,49 @@ export function RunStep({
               <span {...stylex.props(styles.bar, styles.barWidth("240px"))} />
             </span>
           ) : (
-            <span {...stylex.props(styles.projectPath)}>
-              Choose a project to draw from
-            </span>
-          )}
-          {projects.length ? (
-            <OptionMenu
-              ariaLabel="Project"
-              triggerStyle={[buttonStyles.base, buttonStyles.secondary]}
-              value={discovered?.project.path}
-              options={projectOptions}
-              onChange={(value) =>
-                void (value === PICK_FOLDER ? pickFolder() : open(value))
-              }
-            >
-              Change
-            </OptionMenu>
-          ) : (
-            <Button onClick={() => void pickFolder()}>Choose a folder…</Button>
+            <>
+              {projects.length ? (
+                <OptionMenu
+                  ariaLabel="Project"
+                  align="start"
+                  triggerStyle={[buttonStyles.base, styles.projectTrigger]}
+                  value={project?.path}
+                  options={projectOptions}
+                  onChange={(value) => {
+                    if (value === PICK_FOLDER) return void pickFolder();
+
+                    const known = projects.find(
+                      (candidate) => candidate.path === value,
+                    );
+
+                    if (known) void open(known);
+                  }}
+                >
+                  {project?.name ?? "Choose a project"}
+                </OptionMenu>
+              ) : project ? (
+                <span {...stylex.props(styles.projectName)}>
+                  {project.name}
+                </span>
+              ) : null}
+              <span
+                {...stylex.props(
+                  styles.projectPath,
+                  project && styles.projectPathEnd,
+                )}
+              >
+                {project
+                  ? project.path
+                  : projects.length
+                    ? null
+                    : "Choose a project to draw from"}
+              </span>
+              {projects.length ? null : (
+                <Button onClick={() => void pickFolder()}>
+                  Choose a folder…
+                </Button>
+              )}
+            </>
           )}
         </div>
         <div {...stylex.props(styles.card)}>
@@ -375,6 +444,17 @@ export function RunStep({
               onChange={(event) => setQuery(event.target.value)}
               {...stylex.props(styles.filter)}
             />
+            {discovered && !loading ? (
+              <IconButton
+                disabled={refreshing}
+                aria-busy={refreshing || undefined}
+                onClick={() => void refresh()}
+                aria-label="Refresh branches, worktrees and PRs"
+                title="Refresh branches, worktrees and PRs"
+              >
+                <RefreshIcon xstyle={refreshing && styles.refreshing} />
+              </IconButton>
+            ) : null}
             {kinds.length > 1 ? (
               <div
                 role="group"
@@ -461,12 +541,23 @@ export function RunStep({
               ))}
             </div>
           )}
-          <label {...stylex.props(styles.prompt)}>
+          <div {...stylex.props(styles.prompt)}>
             <span {...stylex.props(styles.sectionHeader, styles.promptHeader)}>
               <span {...stylex.props(styles.label)}>Prompt</span>
-              <span {...stylex.props(styles.source)}>Edit freely</span>
+              {/* The copy sits by what it copies. */}
+              <button
+                type="button"
+                aria-label="Copy prompt"
+                disabled={!canCopy}
+                onClick={copy}
+                {...stylex.props(buttonStyles.base, styles.copy)}
+              >
+                <CopyIcon xstyle={styles.copyIcon} />
+                Copy
+              </button>
             </span>
             <textarea
+              aria-label="Prompt"
               {...stylex.props(
                 fieldStyles.box,
                 fieldStyles.multiline,
@@ -480,7 +571,7 @@ export function RunStep({
                 setEdited(true);
               }}
             />
-          </label>
+          </div>
         </div>
         {error ? (
           <p
@@ -490,66 +581,61 @@ export function RunStep({
             {error}
           </p>
         ) : null}
-        {/* Two ways to draw: the reader's own agent, or one Whiteboard runs. */}
+        {/* One sentence: copy the prompt for the reader's own agent, or draw
+            with the chip's agent, whose menu is the only thing to toggle. */}
         <div {...stylex.props(styles.footer)}>
-          <div {...stylex.props(styles.choice)}>
-            <span {...stylex.props(styles.label)}>Paste into your agent</span>
-            <div {...stylex.props(styles.choiceRow)}>
-              <Button
-                size="large"
-                xstyle={styles.action}
-                disabled={!canCopy}
-                onClick={copy}
-              >
-                Copy prompt
-                <span {...stylex.props(styles.shortcut)}>y</span>
-              </Button>
-            </div>
-          </div>
-          <div {...stylex.props(styles.or)} aria-hidden="true">
-            <i {...stylex.props(styles.orRule)} />
-            or
-            <i {...stylex.props(styles.orRule)} />
-          </div>
-          <div {...stylex.props(styles.choice, styles.choiceHere)}>
-            <span {...stylex.props(styles.label)}>Draw it here</span>
-            <div {...stylex.props(styles.choiceRow)}>
-              {agents.length ? (
-                <OptionMenu
-                  ariaLabel="Agent"
-                  triggerStyle={[
-                    buttonStyles.base,
-                    buttonStyles.secondary,
-                    styles.picker,
-                  ]}
-                  value={agent}
-                  options={agents.map((candidate) => ({
-                    value: candidate.id,
-                    label: candidate.name,
-                  }))}
-                  onChange={(next: OnboardingRunAgent["id"]) => setAgent(next)}
+          {agents.length ? (
+            <>
+              <span {...stylex.props(styles.lead)}>
+                Copy for your agent, or use
+              </span>
+              <span {...stylex.props(styles.chip)}>
+                <button
+                  type="button"
+                  aria-label={`Draw with ${agentName}`}
+                  aria-keyshortcuts="Meta+Enter"
+                  title={agentMode}
+                  disabled={!canDraw}
+                  onClick={() => void draw()}
+                  {...stylex.props(buttonStyles.base, styles.chipDraw)}
                 >
-                  <span {...stylex.props(styles.agentDot)} />
-                  {agentName}
-                </OptionMenu>
-              ) : loading ? null : (
-                <span {...stylex.props(styles.source, styles.noAgent)}>
-                  No agent Whiteboard can run is installed.
-                </span>
-              )}
-              <Button
-                variant="primary"
-                size="large"
-                xstyle={[styles.action, styles.draw]}
-                disabled={!canDraw}
-                title={agentMode}
-                onClick={() => void draw()}
-              >
-                {starting ? "Starting…" : "Draw whiteboard"}
-                <Shortcut xstyle={styles.shortcut}>⌘↵</Shortcut>
-              </Button>
-            </div>
-          </div>
+                  {AgentLogo ? <AgentLogo xstyle={styles.chipLogo} /> : null}
+                  {starting ? "Starting…" : agentName}
+                  <Shortcut aria-hidden="true" xstyle={styles.shortcut}>
+                    ⌘↵
+                  </Shortcut>
+                </button>
+                {canChooseAgent ? (
+                  <span aria-hidden="true" {...stylex.props(styles.chipRule)} />
+                ) : null}
+                {canChooseAgent ? (
+                  <OptionMenu
+                    ariaLabel="Draw with another agent"
+                    triggerStyle={[buttonStyles.base, styles.chipMenu]}
+                    value={agent}
+                    options={agents.map((candidate) => {
+                      const Logo = AGENT_LOGOS[candidate.id];
+
+                      return {
+                        value: candidate.id,
+                        label: candidate.name,
+                        icon: <Logo />,
+                      };
+                    })}
+                    onChange={(next: OnboardingRunAgent["id"]) =>
+                      setAgent(next)
+                    }
+                  >
+                    {null}
+                  </OptionMenu>
+                ) : null}
+              </span>
+            </>
+          ) : loading ? null : (
+            <span {...stylex.props(styles.source)}>
+              Copy for your agent; none Whiteboard can run is installed here.
+            </span>
+          )}
         </div>
       </div>
     </div>
@@ -617,6 +703,12 @@ function FolderIcon() {
 }
 
 const styles = stylex.create({
+  refreshing: {
+    animationName: { default: spin, [reducedMotion]: "none" },
+    animationDuration: motion.pulse,
+    animationTimingFunction: "linear",
+    animationIterationCount: "infinite",
+  },
   composer: {
     flex: "0 1 auto",
     minHeight: 0,
@@ -627,7 +719,7 @@ const styles = stylex.create({
     alignItems: "center",
     gap: "14px",
     paddingBlock: "10px",
-    paddingInline: "12px 6px",
+    paddingInline: "12px",
     color: tokens.inkMuted,
   },
   projectName: {
@@ -635,6 +727,16 @@ const styles = stylex.create({
     fontSize: fontSize.reading,
     fontWeight: fontWeight.medium,
   },
+  // The name is the project menu; it reads as the name until hovered.
+  projectTrigger: {
+    marginInline: "-8px -6px",
+    paddingInline: "8px",
+    color: tokens.ink,
+    fontFamily: "inherit",
+    fontSize: fontSize.reading,
+  },
+  // The path sits at the row's end, after the name's menu.
+  projectPathEnd: { textAlign: "end" },
   projectPath: {
     flex: 1,
     overflow: "hidden",
@@ -848,69 +950,61 @@ const styles = stylex.create({
     marginInline: "20px",
   },
   alert: { paddingInline: "12px" },
+  // A quiet text control in the prompt's header.
+  copy: {
+    height: "24px",
+    marginBlock: "-4px",
+    marginInlineEnd: "-8px",
+    paddingInline: "8px",
+    color: { default: tokens.inkMuted, ":hover:not(:disabled)": tokens.ink },
+    fontFamily: tokens.fontMono,
+    fontSize: fontSize.small,
+  },
+  copyIcon: { width: "13px", height: "13px" },
+  // The sentence ends at the row's end, under the prompt's Copy.
   footer: {
     display: "flex",
-    alignItems: "stretch",
-    flexShrink: 0,
-    paddingBlock: "16px 8px",
-    paddingInline: "12px",
-  },
-  choice: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-    minWidth: 0,
-  },
-  // Draw it here takes the rest of the row and sits at its end.
-  choiceHere: { flex: 1, alignItems: "flex-end" },
-  choiceRow: {
-    display: "flex",
     alignItems: "center",
+    justifyContent: "flex-end",
     gap: "10px",
-  },
-  // The picker and both buttons share one height, so the row reads as one.
-  picker: {
-    gap: "8px",
-    height: "42px",
+    flexShrink: 0,
+    paddingBlock: "18px 10px",
     paddingInline: "12px",
-    borderRadius: radius.surface,
   },
-  action: {
-    gap: "10px",
-    height: "42px",
-    paddingBlock: 0,
-    paddingInline: "20px 18px",
-    borderRadius: radius.surface,
+  lead: {
+    color: tokens.inkMuted,
+    fontFamily: tokens.fontSerif,
+    fontSize: fontSize.heading,
+    lineHeight: "22px",
+  },
+  // One small chip: the agent draws; past a hairline, its caret opens the
+  // agent menu.
+  chip: {
+    display: "inline-flex",
+    alignItems: "center",
+    borderRadius: radius.control,
+    backgroundColor: tokens.surface,
+    boxShadow: `${elevation.raised}, 0 0 0 1px ${tokens.rule}`,
+  },
+  chipDraw: {
+    gap: "8px",
+    height: "28px",
+    paddingInline: "8px",
+    color: tokens.ink,
+    fontFamily: tokens.fontMono,
     fontSize: fontSize.ui,
   },
-  // Only Draw is raised: it is the step the screen leads to.
-  draw: {
-    boxShadow: { default: elevation.popover, ":disabled": "none" },
-  },
-  noAgent: { alignSelf: "center" },
-  // A quiet "or" on a hairline, between the two ways.
-  or: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "6px",
-    width: "56px",
-    flexShrink: 0,
-    color: tokens.inkFaint,
-    fontFamily: tokens.fontSerif,
-    fontSize: fontSize.body,
-    fontStyle: "italic",
-  },
-  orRule: {
+  chipLogo: { width: "16px", height: "16px" },
+  chipRule: {
     width: "1px",
-    flexGrow: 1,
-    backgroundColor: tokens.rule,
+    height: "14px",
+    flexShrink: 0,
+    backgroundColor: tokens.ruleSoft,
   },
-  agentDot: {
-    width: "8px",
-    height: "8px",
-    borderRadius: radius.round,
-    backgroundColor: tokens.changeAdded,
+  chipMenu: {
+    height: "28px",
+    paddingInline: "8px",
+    color: tokens.inkMuted,
   },
-  shortcut: { opacity: 0.7 },
+  shortcut: { color: tokens.inkFaint },
 });

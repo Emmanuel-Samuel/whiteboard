@@ -5,10 +5,23 @@ import { textStyles } from "@canvas/ui/text";
 import type {
   ReviewCanvasContent,
   ReviewCanvasHandle,
+  ReviewCanvasHomeData,
+  ReviewCanvasHomeHost,
+  ReviewCanvasInstallActions,
+  ReviewCanvasInstallContent,
   ReviewCanvasUi,
+  ReviewCliInstallStatus,
 } from "@dev.fast/review-protocol";
 import * as stylex from "@stylexjs/stylex";
-import { createRef, useEffect, useRef, useState } from "react";
+import {
+  type RefObject,
+  createRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createRoot } from "react-dom/client";
 
 import { ApiCanvas } from "./api-canvas";
@@ -29,12 +42,19 @@ import "./styles.css";
 
 export { clearPersistedReviewViewState as clearReviewViewState } from "./review-view-state";
 
+/** What the workbench can ask of Home through the canvas handle. */
+interface HomeCommands {
+  newWhiteboard(): boolean;
+}
+
 function ReviewCanvas({
   content,
   findHost,
+  homeCommands,
 }: {
   content: ReviewCanvasContent;
   findHost: ReviewFindHost;
+  homeCommands: RefObject<HomeCommands | null>;
 }) {
   if (content.kind === "api")
     return (
@@ -48,7 +68,14 @@ function ReviewCanvas({
     );
 
   if (content.kind === "home")
-    return <Home content={content} findHost={findHost} />;
+    return (
+      <Home
+        data={content.data}
+        host={content.host}
+        findHost={findHost}
+        commands={homeCommands}
+      />
+    );
 
   if (content.kind === "source") {
     if (content.error) {
@@ -70,17 +97,7 @@ function ReviewCanvas({
     );
   }
 
-  if (content.kind === "welcome") {
-    return (
-      <FirstRun
-        install={content.install}
-        setupActions={content.setupActions}
-        onSkip={() => content.close?.()}
-        onClose={content.close}
-        onboarding={content.onboarding}
-      />
-    );
-  }
+  if (content.kind === "welcome") return <Welcome {...content} />;
 
   if (content.kind === "settings") {
     return <SettingsPage settings={content.settings} />;
@@ -97,42 +114,105 @@ function ReviewCanvas({
   return null;
 }
 
-function Home({
-  content,
-  findHost,
-}: {
-  content: Extract<ReviewCanvasContent, { kind: "home" }>;
-  findHost: ReviewFindHost;
-}) {
-  const trashReview = content.trashReview;
-  const deleteReview = content.deleteReview;
-  const restoreReview = content.restoreReview;
-  const markReviewRead = content.markReviewRead;
+/** Status with the host's stable actions, rebuilt only when the status is. */
+function useInstall(
+  status: ReviewCliInstallStatus | undefined,
+  actions: ReviewCanvasInstallActions | undefined,
+): ReviewCanvasInstallContent | undefined {
+  return useMemo(
+    () => (status && actions ? { ...actions, status } : undefined),
+    [status, actions],
+  );
+}
 
+function Welcome({
+  data,
+  host,
+}: Extract<ReviewCanvasContent, { kind: "welcome" }>) {
+  const install = useInstall(data.installStatus, host.install);
+
+  return (
+    <FirstRun
+      install={install}
+      setupActions={host.setupActions}
+      onSkip={() => host.close?.()}
+      onClose={host.close}
+      onboarding={data.onboarding}
+    />
+  );
+}
+
+function Home({
+  data,
+  host,
+  findHost,
+  commands,
+}: {
+  data: ReviewCanvasHomeData;
+  host: ReviewCanvasHomeHost;
+  findHost: ReviewFindHost;
+  commands: RefObject<HomeCommands | null>;
+}) {
+  const {
+    trashReview,
+    deleteReview,
+    restoreReview,
+    markReviewRead,
+    setupActions,
+  } = host;
+
+  const install = useInstall(data.installStatus, host.install);
   const [skipped, setSkipped] = useState(readOnboardingSkipped);
   const [creating, setCreating] = useState(false);
-  const setupActions = content.setupActions;
 
-  // A new whiteboard opens in its own tab; Home is back to its list after.
-  const listed = useRef(content.reviews.length);
+  // Drawing here closes New whiteboard once the run starts. A copied prompt
+  // is drawn by the reader's own agent, so the screen closes when the next
+  // whiteboard appears; an agent elsewhere publishing first doesn't.
+  const copied = useRef(false);
+  const listed = useRef(data.reviews.length);
 
   useEffect(() => {
-    if (content.reviews.length > listed.current) setCreating(false);
-    listed.current = content.reviews.length;
-  }, [content.reviews.length]);
+    if (copied.current && data.reviews.length > listed.current) {
+      copied.current = false;
+      setCreating(false);
+    }
+
+    listed.current = data.reviews.length;
+  }, [data.reviews.length]);
+
+  const startCreating = () => {
+    copied.current = false;
+    setCreating(true);
+  };
 
   // Until the first whiteboard is published, Home is first run, unless the
   // reader skipped it.
-  if (
-    content.view !== "trash" &&
-    content.onboarding?.published === false &&
-    !skipped
-  )
+  const firstRun =
+    data.view !== "trash" && data.onboarding?.published === false && !skipped;
+
+  // ⌘N: wherever the New button would show.
+  const canCreate = setupActions !== undefined && data.view !== "trash";
+
+  useImperativeHandle(
+    commands,
+    () => ({
+      newWhiteboard() {
+        if (!canCreate || firstRun) return false;
+
+        if (!creating) startCreating();
+
+        return true;
+      },
+    }),
+    [canCreate, firstRun, creating],
+  );
+
+  if (firstRun)
     return (
       <FirstRun
-        install={content.install}
-        setupActions={content.setupActions}
-        onboarding={content.onboarding}
+        install={install}
+        setupActions={setupActions}
+        onboarding={data.onboarding}
         onSkip={() => setSkipped(true)}
         onDismissUpdate={() => setSkipped(true)}
       />
@@ -143,16 +223,19 @@ function Home({
       <NewWhiteboard
         setupActions={setupActions}
         onClose={() => setCreating(false)}
+        onCopied={() => {
+          copied.current = true;
+        }}
       />
     );
 
   return (
     <ReviewHome
       findHost={findHost}
-      view={content.view}
-      onViewChange={content.navigate}
-      reviews={content.reviews}
-      onOpen={(review) => content.openReview(review.reviewId)}
+      view={data.view}
+      onViewChange={host.navigate}
+      reviews={data.reviews}
+      onOpen={(review) => host.openReview(review.reviewId)}
       onTrash={
         trashReview ? (review) => trashReview(review.reviewId) : undefined
       }
@@ -165,11 +248,11 @@ function Home({
       onRestore={
         restoreReview ? (review) => restoreReview(review.reviewId) : undefined
       }
-      remoteHosts={content.remoteHosts}
-      onboarding={content.onboarding}
-      onOpenSettings={content.openSettings}
-      onOpenSetup={content.openSetup}
-      onNewWhiteboard={setupActions ? () => setCreating(true) : undefined}
+      remoteHosts={host.remoteHosts}
+      onboarding={data.onboarding}
+      onOpenSettings={host.openSettings}
+      onOpenSetup={host.openSetup}
+      onNewWhiteboard={setupActions ? startCreating : undefined}
       emptyState={
         setupActions ? (
           <NewWhiteboard setupActions={setupActions} embedded />
@@ -221,6 +304,7 @@ export function mountReviewCanvas(
   let themeSubscription: { dispose(): void } | null = null;
   const findHost = createReviewFindHost();
   const diffFilePicker = createRef<DiffFilePicker>();
+  const homeCommands = createRef<HomeCommands>();
   container.classList.add("review-canvas-root");
   // The canvas stylesheet is compiled inside @scope (.review-canvas-root),
   // where the scope root itself is only matched by :scope — a theme class on
@@ -283,7 +367,11 @@ export function mountReviewCanvas(
         <CanvasUiContext.Provider value={ui}>
           <UiHostProvider useTooltip={useTooltip}>
             <DiffFilePickerContext.Provider value={diffFilePicker}>
-              <ReviewCanvas content={content} findHost={findHost} />
+              <ReviewCanvas
+                content={content}
+                findHost={findHost}
+                homeCommands={homeCommands}
+              />
             </DiffFilePickerContext.Provider>
           </UiHostProvider>
         </CanvasUiContext.Provider>
@@ -313,6 +401,12 @@ export function mountReviewCanvas(
     },
     revealDiffFile(path) {
       diffFilePicker.current?.reveal(path);
+    },
+    newWhiteboard() {
+      return (
+        content.kind === "home" &&
+        (homeCommands.current?.newWhiteboard() ?? false)
+      );
     },
     dispose() {
       if (disposed) return;

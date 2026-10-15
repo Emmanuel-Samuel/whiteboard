@@ -113,8 +113,8 @@ export function RefreshIcon({ xstyle }: IconProps = {}): ReactElement {
       focusable="false"
       viewBox="0 0 24 24"
     >
-      <path d="M20 7v5h-5" />
-      <path d="M20 12a8 8 0 1 0-2.34 5.66" />
+      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
     </svg>
   );
 }
@@ -343,6 +343,20 @@ export function SearchIcon({ xstyle }: IconProps = {}): ReactElement {
     >
       <circle cx="10.5" cy="10.5" r="6.75" />
       <path d="m15.75 15.75 4.5 4.5" />
+    </svg>
+  );
+}
+
+export function CopyIcon({ xstyle }: IconProps = {}): ReactElement {
+  return (
+    <svg
+      aria-hidden="true"
+      {...stylex.props(styles.icon, xstyle)}
+      focusable="false"
+      viewBox="0 0 24 24"
+    >
+      <rect x="9" y="9" width="11.25" height="11.25" rx="2.25" />
+      <path d="M15 9V5.75A2 2 0 0 0 13 3.75H5.75a2 2 0 0 0-2 2V13a2 2 0 0 0 2 2H9" />
     </svg>
   );
 }
