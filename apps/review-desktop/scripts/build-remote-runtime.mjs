@@ -203,6 +203,9 @@ export async function buildRemoteRuntime({
 
   await buildBuiltinExtensions(out);
 
+  // localize calls stay unbuilt, so this table is never read; a missing one is an error at start.
+  fs.writeFileSync(path.join(out, "out/nls.messages.json"), "[]\n");
+
   return { out, commit };
 }
 
