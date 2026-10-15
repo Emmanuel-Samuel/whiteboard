@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { resolveReviewStackLayers } from "@review/review-stack.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { azureDevOpsProvider } from "./azure-devops-provider.js";
@@ -35,7 +36,16 @@ describe("reading a pull request", () => {
     title: "Add widgets",
     baseRefName: "main",
     baseRefOid: "a".repeat(40),
+    headBranch: "widgets",
   };
+
+  const { headBranch, ...ghRecord } = record;
+
+  const ghJson = JSON.stringify({
+    ...ghRecord,
+    headRefName: headBranch,
+    isCrossRepository: false,
+  });
 
   const deps = (
     gh: () => Promise<string>,
@@ -67,7 +77,8 @@ describe("reading a pull request", () => {
       Response.json({
         number: 7,
         title: "Add widgets",
-        base: { ref: "main", sha: record.baseRefOid },
+        base: { ref: "main", sha: record.baseRefOid, repo: { id: 1 } },
+        head: { ref: "widgets", repo: { id: 1 } },
       }),
     );
 
@@ -85,7 +96,7 @@ describe("reading a pull request", () => {
 
   it("reads a GitHub Enterprise PR through gh on its host, never the public API", async () => {
     const enterprise = "https://ghe.example.com/acme/widget/pull/7";
-    const using = deps(async () => JSON.stringify(record));
+    const using = deps(async () => ghJson);
 
     await expect(readPullRequest(enterprise, using)).resolves.toEqual({
       host: "ghe.example.com",
@@ -139,7 +150,13 @@ describe("creating a review from a pull request URL alone", () => {
   let local: ReturnType<typeof openLocalReviewStore>;
 
   /** What gh reports; the tests move the base as GitHub would. */
-  let pr: Omit<PullRequestRecord, "host" | "slug" | "headRef">;
+  let pr: Omit<
+    PullRequestRecord,
+    "host" | "slug" | "headRef" | "headBranch"
+  > & {
+    headRefName: string;
+    isCrossRepository: boolean;
+  };
 
   let ghCalls: number;
 
@@ -194,7 +211,13 @@ describe("creating a review from a pull request URL alone", () => {
     gitIn(directory)("clone", "-q", upstream, checkout);
     pointAtUpstream(path.join(checkout, ".git"));
 
-    pr = { number: 7, title: "Add widgets", baseRefName: "main" };
+    pr = {
+      number: 7,
+      title: "Add widgets",
+      baseRefName: "main",
+      headRefName: "contributor",
+      isCrossRepository: true,
+    };
     ghCalls = 0;
     local = openLocalReviewStore(path.join(directory, "reviews.db"), {
       manageWorkspaces: false,
@@ -269,8 +292,9 @@ describe("creating a review from a pull request URL alone", () => {
         base: fork,
         head: upstreamHead(),
       },
-      origin: { pullRequestUrl: url, pullRequestNumber: 7 },
+      origin: { pullRequestUrl: url, pullRequestNumber: 7, baseBranch: "main" },
     });
+    expect(snapshot.origin).not.toHaveProperty("branch");
     expect(await local.data.changes(snapshot.pins!, "feature.ts")).toContain(
       "+export const feature = 1;",
     );
@@ -440,8 +464,64 @@ describe("creating a review from a pull request URL alone", () => {
     expect(local.store.read(reviewId)).toMatchObject({
       title: "Add widgets",
       pins: { repositoryId, base: fork, head: upstreamHead() },
-      origin: { pullRequestUrl: azure, pullRequestNumber: 7 },
+      origin: {
+        pullRequestUrl: azure,
+        pullRequestNumber: 7,
+        branch: "feature",
+        baseBranch: "main",
+      },
     });
+  });
+
+  it("stacks same-repository PRs by their branches without GitHub stacks", async () => {
+    const up = gitIn(upstream);
+    up("checkout", "-q", "-b", "lower");
+    commit(upstream, "lower.ts", "export const lower = 1;\n");
+    up("update-ref", "refs/pull/8/head", "HEAD");
+    up("checkout", "-q", "-b", "upper");
+    commit(upstream, "upper.ts", "export const upper = 1;\n");
+    up("update-ref", "refs/pull/9/head", "HEAD");
+    up("checkout", "-q", "main");
+    await local.data.register(checkout);
+
+    const create = (number: number, head: string, base: string) => {
+      pr = {
+        number,
+        title: `PR ${number}`,
+        baseRefName: base,
+        headRefName: head,
+        isCrossRepository: false,
+      };
+
+      return local.store.execute(
+        command({
+          type: "create",
+          pullRequestUrl: `https://github.com/acme/widget/pull/${number}`,
+        }),
+      );
+    };
+
+    await create(8, "lower", "main");
+    const { reviewId } = await create(9, "upper", "lower");
+
+    expect(local.store.read(reviewId).origin).toMatchObject({
+      branch: "upper",
+      baseBranch: "lower",
+    });
+
+    const layers = await resolveReviewStackLayers(
+      { ...local.store.read(reviewId), reviewId },
+      local.store.list(),
+      {
+        runGitHubApi: () => Promise.reject(new Error("stacks unavailable")),
+        repositoryPath: checkout,
+      },
+    );
+
+    expect(layers).toMatchObject([
+      { branch: "lower", pullRequestNumber: 8, relation: "earlier" },
+      { branch: "upper", pullRequestNumber: 9, relation: "current" },
+    ]);
   });
 
   it("uses an explicit target, asking GitHub only for the PR's title", async () => {
