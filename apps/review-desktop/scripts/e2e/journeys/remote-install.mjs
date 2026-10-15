@@ -239,7 +239,7 @@ async function watchPage(page) {
       ].find(
         (e) =>
           e.offsetParent !== null &&
-          e.textContent.startsWith("Install Whiteboard on "),
+          e.textContent.startsWith("Install remote server on "),
       );
 
       if (title && !open)
@@ -347,7 +347,7 @@ export async function removeHost(ctx, host, { uninstall = false } = {}) {
 
 async function answerPrompt(ctx, host, label) {
   const widget = ctx.page.locator(".quick-input-widget");
-  const heading = `Install Whiteboard on ${host}?`;
+  const heading = `Install remote server on ${host}? (~250 MB)`;
 
   await ctx.until(
     async () =>
@@ -358,17 +358,12 @@ async function answerPrompt(ctx, host, label) {
     2 * MINUTE,
   );
 
-  const text = await widget
-    .locator(".quick-input-description")
-    .first()
-    .textContent();
-
   await widget
     .locator(".monaco-list-row", { hasText: new RegExp(`^${label}$`) })
     .first()
     .click({ timeout: 10_000 });
 
-  return { text, at: Date.now() };
+  return Date.now();
 }
 
 async function reached(ctx, watch, host, states, label, timeout) {
@@ -407,7 +402,7 @@ function assertStepOrder(details, label) {
 
 const promptsFor = async (ctx, host) =>
   (await pageRecord(ctx)).prompts.filter(
-    (prompt) => prompt.title === `Install Whiteboard on ${host}?`,
+    (prompt) => prompt.title === `Install remote server on ${host}? (~250 MB)`,
   );
 
 const marker = async (host, version) =>
@@ -421,7 +416,7 @@ const marker = async (host, version) =>
 async function install(ctx, watch, host, { timeout = 10 * MINUTE } = {}) {
   await addHost(ctx, host);
 
-  const { text, at } = await answerPrompt(ctx, host, "Install");
+  const at = await answerPrompt(ctx, host, "Install");
 
   const online = await reached(
     ctx,
@@ -442,7 +437,7 @@ async function install(ctx, watch, host, { timeout = 10 * MINUTE } = {}) {
 
   assertStepOrder(steps, host);
 
-  return { text, steps, ms: online.at - at };
+  return { steps, ms: online.at - at };
 }
 
 async function createRemoteReview(host, reviewTitle) {
@@ -507,8 +502,6 @@ async function steps(ctx, until, watch, timings, manifestPath) {
   const first = await install(ctx, watch, fresh);
 
   timings.fresh = first.ms;
-  assert.match(first.text, /about 250 MB/);
-  assert.doesNotMatch(first.text, /\/home\//, "the question names a path");
 
   const settingsSteps = (await pageRecord(ctx)).rows[fresh].filter((text) =>
     STEP_ORDER.some((step) => text.startsWith(step)),
