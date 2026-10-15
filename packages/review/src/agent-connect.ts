@@ -10,13 +10,14 @@ import type {
 } from "@dev.fast/review-protocol";
 
 import { findExecutable } from "./ask/agents.js";
-import { type McpLaunch, reviewMcpLaunch } from "./connect-prompts.js";
+import {
+  type McpLaunch,
+  WHITEBOARD_PLUGIN as PLUGIN,
+  connectSteps,
+  reviewMcpLaunch,
+} from "./connect-prompts.js";
 import { cursorInstallDeeplink } from "./cursor-deeplink.js";
 import { ALL_INSTALL_TARGETS, type InstallTarget } from "./install.js";
-
-const MARKETPLACE = "devdotfast/whiteboard";
-
-const PLUGIN = "whiteboard@devfast";
 
 const STEP_TIMEOUT_MS = 120_000;
 
@@ -144,9 +145,15 @@ async function harnessFound(
   return false;
 }
 
+/** OpenCode's config is JSONC: drop comments and trailing commas, keep strings. */
+const JSONC_EXTRAS =
+  /("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\/|,(?=\s*[}\]])/g;
+
 async function readJson(file: string): Promise<JsonValue | undefined> {
   try {
-    return JSON.parse(await readFile(file, "utf8"));
+    return JSON.parse(
+      (await readFile(file, "utf8")).replace(JSONC_EXTRAS, "$1"),
+    );
   } catch {
     return undefined;
   }
@@ -235,19 +242,23 @@ async function harnessConnected(
       }
 
     case "opencode": {
-      const config = await readJson(
-        path.join(
-          env.XDG_CONFIG_HOME ?? path.join(homeDir, ".config"),
-          "opencode",
-          "opencode.json",
-        ),
+      const configDir = path.join(
+        env.XDG_CONFIG_HOME || path.join(homeDir, ".config"),
+        "opencode",
       );
 
-      // Its `mcp add` has written both shapes.
-      return (
-        lookup(config, "mcp", "whiteboard") !== undefined ||
-        lookup(config, "mcp", "servers", "whiteboard") !== undefined
-      );
+      for (const name of ["opencode.json", "opencode.jsonc", "config.json"]) {
+        const config = await readJson(path.join(configDir, name));
+
+        // Its `mcp add` has written both shapes.
+        if (
+          lookup(config, "mcp", "whiteboard") !== undefined ||
+          lookup(config, "mcp", "servers", "whiteboard") !== undefined
+        )
+          return true;
+      }
+
+      return false;
     }
 
     case "pi":
@@ -294,94 +305,6 @@ export async function detectConnectAgents(
       };
     }),
   );
-}
-
-interface Step {
-  args: string[];
-  /** Output that means the step had already been done. */
-  done?: RegExp;
-  /** Whether a failure leaves the next step to decide the outcome. */
-  optional?: boolean;
-}
-
-const ALREADY = /already/i;
-
-/** The commands that install Whiteboard into a CLI harness, as
- * connect-prompts.ts tells an agent to run them. */
-function cliSteps(
-  target: Exclude<InstallTarget, "cursor" | "omp">,
-  launch: McpLaunch,
-  platform: NodeJS.Platform,
-): Step[] {
-  // The plugin install says whether it worked: the marketplace can already be
-  // known by another source, such as the repository's earlier name.
-  const marketplace = {
-    args: ["plugin", "marketplace", "add", MARKETPLACE],
-    optional: true,
-  };
-
-  // The plugins' sh launch cannot start on Windows, so there Claude and
-  // Copilot (which loads the Claude plugin) register the server directly.
-  const windowsServer = (scope: string[]) => ({
-    args: [
-      "mcp",
-      "add",
-      ...scope,
-      "whiteboard",
-      "--",
-      launch.command,
-      ...launch.args,
-    ],
-    done: ALREADY,
-  });
-
-  switch (target) {
-    case "claude":
-      return platform === "win32"
-        ? [windowsServer(["-s", "user"])]
-        : [
-            marketplace,
-            {
-              args: ["plugin", "install", PLUGIN, "--scope", "user"],
-              done: ALREADY,
-            },
-          ];
-    case "codex":
-      return [marketplace, { args: ["plugin", "add", PLUGIN], done: ALREADY }];
-    case "copilot":
-      return platform === "win32"
-        ? [windowsServer([])]
-        : [marketplace, { args: ["plugin", "install", PLUGIN], done: ALREADY }];
-    case "opencode":
-      return [
-        {
-          args: [
-            "mcp",
-            "add",
-            "--global",
-            "whiteboard",
-            "--",
-            launch.command,
-            ...launch.args,
-          ],
-          done: ALREADY,
-        },
-      ];
-    case "pi":
-      return [
-        {
-          args: [
-            "mcp",
-            "add",
-            "whiteboard",
-            "--",
-            launch.command,
-            ...launch.args,
-          ],
-          done: ALREADY,
-        },
-      ];
-  }
 }
 
 /** oh-my-pi reads its MCP servers from one JSON file; merge ours in. */
@@ -494,7 +417,7 @@ export async function connectAgent(
     };
   const outputs: string[] = [];
 
-  for (const step of cliSteps(target, launch, platform)) {
+  for (const step of connectSteps(target, launch, platform)) {
     const result = await run(executable, step.args);
 
     outputs.push(result.output);
