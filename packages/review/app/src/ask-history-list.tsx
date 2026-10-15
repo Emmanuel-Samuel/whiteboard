@@ -1,3 +1,4 @@
+import { buttonStyles } from "@canvas/ui/button";
 import { focusStyles } from "@canvas/ui/focus";
 import * as stylex from "@stylexjs/stylex";
 import { type ReactElement, useEffect } from "react";
@@ -252,7 +253,11 @@ export function AskHistoryList({
                 >
                   <button
                     type="button"
-                    {...stylex.props(focusStyles.ringInset, styles.historyOpen)}
+                    {...stylex.props(
+                      focusStyles.ringInset,
+                      buttonStyles.reset,
+                      styles.historyOpen,
+                    )}
                     onPointerEnter={() => {
                       history?.preview(entry.id);
                       history?.reveal(entry);
@@ -332,6 +337,7 @@ export function AskHistoryList({
             type="button"
             {...stylex.props(
               focusStyles.ring,
+              buttonStyles.reset,
               askPanelStyles.errorAction,
               styles.allConversations,
             )}
@@ -380,9 +386,6 @@ const styles = stylex.create({
     gap: "12px",
     minWidth: 0,
     padding: "12px 40px 12px 14px",
-    borderWidth: 0,
-    borderStyle: "none",
-    borderColor: "currentcolor",
     backgroundColor: {
       default: tokens.transparent,
       ":hover": tokens.chromeHoverBg,

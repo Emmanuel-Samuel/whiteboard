@@ -1,4 +1,4 @@
-import { Button, IconButton } from "@canvas/ui/button";
+import { Button, IconButton, buttonStyles } from "@canvas/ui/button";
 import { focusStyles } from "@canvas/ui/focus";
 import { StatusBanner } from "@canvas/ui/status-banner";
 import { surfaceStyles } from "@canvas/ui/surface";
@@ -575,6 +575,7 @@ function ReviewLayoutContent({
                     "review-segment",
                     segmentMarker,
                     focusStyles.ringInset,
+                    buttonStyles.reset,
                     segmentStyles.segment,
                     segmentStyles.segmentTopbar,
                     activeView === view && segmentStyles.segmentActive,
@@ -852,6 +853,7 @@ function ReviewLayoutContent({
       {rightPanelOpen && (
         <div
           {...stylex.props(
+            buttonStyles.reset,
             shellStyles.resizer,
             shellStyles.peekResizer,
             shellStyles.resizerGrabPanel,
@@ -879,7 +881,7 @@ function CommitDiffScopeBar({
     <div {...stylex.props(scopeBarStyles.bar)}>
       <button
         type="button"
-        {...stylex.props(scopeBarStyles.back)}
+        {...stylex.props(buttonStyles.reset, scopeBarStyles.back)}
         onClick={onBack}
       >
         <span aria-hidden="true">←</span> Commits
@@ -914,10 +916,6 @@ const scopeBarStyles = stylex.create({
     height: "20px",
     flex: "0 0 auto",
     padding: 0,
-    borderWidth: 0,
-    borderStyle: "none",
-    borderColor: "currentcolor",
-    backgroundColor: tokens.transparent,
     color: tokens.accent,
     fontSize: fontSize.micro,
   },

@@ -1,5 +1,5 @@
 import { fontSize, fontWeight, radius } from "@canvas/scale.stylex";
-import { IconButton } from "@canvas/ui/button";
+import { IconButton, buttonStyles } from "@canvas/ui/button";
 import { CopyButton } from "@canvas/ui/copy";
 import { textStyles } from "@canvas/ui/text";
 import {
@@ -135,7 +135,7 @@ function CommitRow({
       <div {...stylex.props(styles.header, expanded && styles.headerExpanded)}>
         <button
           type="button"
-          {...stylex.props(chevronMarker, styles.toggle)}
+          {...stylex.props(chevronMarker, buttonStyles.reset, styles.toggle)}
           aria-expanded={expanded}
           onClick={toggleExpanded}
           title={commit.subject}
@@ -181,7 +181,7 @@ function CommitRow({
           {visibleFiles?.files.map((file) => (
             <button
               type="button"
-              {...stylex.props(styles.file)}
+              {...stylex.props(buttonStyles.reset, styles.file)}
               key={file.path}
               onClick={() => onOpenDiff(commit, "file", file.path)}
             >
@@ -199,7 +199,7 @@ function CommitRow({
           {omittedFileCount > 0 ? (
             <button
               type="button"
-              {...stylex.props(styles.filesFooter)}
+              {...stylex.props(buttonStyles.reset, styles.filesFooter)}
               onClick={() => onOpenDiff(commit, "row")}
             >
               {countLabel(omittedFileCount, "more file")}
@@ -384,10 +384,6 @@ const styles = stylex.create({
     minWidth: 0,
     alignItems: "center",
     padding: 0,
-    borderWidth: 0,
-    borderStyle: "none",
-    borderColor: "currentcolor",
-    backgroundColor: tokens.transparent,
     color: "inherit",
     gap: "10px",
     textAlign: "left",
@@ -437,9 +433,6 @@ const styles = stylex.create({
     alignItems: "center",
     gap: "10px",
     padding: "6px 12px",
-    borderWidth: 0,
-    borderStyle: "none",
-    borderColor: "currentcolor",
     backgroundColor: {
       default: tokens.transparent,
       ":hover": tokens.controlBg,
@@ -454,10 +447,6 @@ const styles = stylex.create({
   },
   filesFooter: {
     padding: "6px 12px 4px 38px",
-    borderWidth: 0,
-    borderStyle: "none",
-    borderColor: "currentcolor",
-    backgroundColor: tokens.transparent,
     color: { default: tokens.inkFaint, ":hover": tokens.accent },
     fontSize: fontSize.micro,
   },
