@@ -191,6 +191,7 @@ export interface ReviewInlineEditorHandle extends ReviewDisposable {
   revealFindMatch(index: number): void;
   clearActiveFindMatch(): void;
   clearFind(): void;
+  setAskMarks?(marks: readonly ReviewAskMark[], mount: ReviewAskPinMount): void;
 }
 
 export interface ReviewInlineEditorFactory {
@@ -290,8 +291,23 @@ export interface ReviewDiffViewHandle extends ReviewDisposable {
   revealFindMatch?(index: number): void;
   clearActiveFindMatch?(): void;
   clearFind?(): void;
+  setAskMarks?(marks: readonly ReviewAskMark[], mount: ReviewAskPinMount): void;
   onDidError(listener: (message: string) => void): ReviewDisposable;
 }
+
+/** Lines that saved Ask conversations were about. */
+export interface ReviewAskMark {
+  id: string;
+  file: string;
+  side: ReviewDiffSide;
+  fromLine: number;
+  toLine: number;
+  /** The lines' text when asked about; a mark whose lines changed is hidden. */
+  text?: readonly string[];
+}
+
+/** Draws a mark's pin into its gutter node; returns its cleanup. */
+export type ReviewAskPinMount = (id: string, node: HTMLElement) => () => void;
 
 /**
  * Mounts the changed-files diff UI — file list and multi-diff widget — into an
