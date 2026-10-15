@@ -1,4 +1,5 @@
 import { Button, IconButton } from "@canvas/ui/button";
+import { focusStyles } from "@canvas/ui/focus";
 import { StatusBanner } from "@canvas/ui/status-banner";
 import { surfaceStyles } from "@canvas/ui/surface";
 import { textStyles } from "@canvas/ui/text";
@@ -573,6 +574,7 @@ function ReviewLayoutContent({
                   {...withClass(
                     "review-segment",
                     segmentMarker,
+                    focusStyles.ringInset,
                     segmentStyles.segment,
                     segmentStyles.segmentTopbar,
                     activeView === view && segmentStyles.segmentActive,

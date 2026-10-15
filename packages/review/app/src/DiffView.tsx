@@ -1,5 +1,6 @@
 import { drawMotion } from "@canvas/draw-motion.stylex";
 import { fontSize, fontWeight, motion, radius } from "@canvas/scale.stylex";
+import { focusStyles } from "@canvas/ui/focus";
 import { textStyles } from "@canvas/ui/text";
 import type {
   ReviewCommitScope,
@@ -375,6 +376,7 @@ export function ReviewDiffView({
                   >
                     <button
                       {...stylex.props(
+                        focusStyles.ringInset,
                         styles.toggle,
                         empty && styles.toggleEmpty,
                         selected && styles.toggleActive,
@@ -830,6 +832,7 @@ function RailLens({
   return (
     <button
       {...stylex.props(
+        focusStyles.ringInset,
         styles.railLens,
         empty && styles.toggleEmpty,
         selected && styles.railLensActive,
@@ -872,7 +875,7 @@ function RailButton({
   return (
     <button
       ref={tooltip}
-      {...stylex.props(styles.railButton)}
+      {...stylex.props(focusStyles.ringInset, styles.railButton)}
       aria-label={label}
       onClick={onClick}
     >
@@ -1035,8 +1038,6 @@ const styles = stylex.create({
     color: tokens.inkMuted,
     cursor: "pointer",
     backgroundColor: { default: tokens.transparent, ":hover": tokens.well },
-    outline: { default: null, ":focus-visible": `1px solid ${tokens.accent}` },
-    outlineOffset: { default: null, ":focus-visible": "-2px" },
   },
   // 5ch is five letters in Geist Mono.
   railLens: {
@@ -1055,8 +1056,6 @@ const styles = stylex.create({
     whiteSpace: "nowrap",
     cursor: "pointer",
     backgroundColor: { default: tokens.transparent, ":hover": tokens.well },
-    outline: { default: null, ":focus-visible": `1px solid ${tokens.accent}` },
-    outlineOffset: { default: null, ":focus-visible": "-2px" },
   },
   railLensActive: {
     color: tokens.ink,
@@ -1173,8 +1172,6 @@ const styles = stylex.create({
     color: "inherit",
     cursor: "pointer",
     backgroundColor: { default: tokens.transparent, ":hover": tokens.well },
-    outline: { default: null, ":focus-visible": `1px solid ${tokens.accent}` },
-    outlineOffset: { default: null, ":focus-visible": "-2px" },
   },
   // A lens with no changes (usually Uncategorized) has nothing to filter to.
   toggleEmpty: {

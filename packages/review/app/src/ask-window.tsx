@@ -1,3 +1,4 @@
+import { focusStyles } from "@canvas/ui/focus";
 import * as stylex from "@stylexjs/stylex";
 import {
   type PointerEvent,
@@ -473,6 +474,7 @@ export function AskPills({ asks }: { asks: AskPanel[] }): ReactElement {
       type="button"
       {...stylex.props(
         surfaceStyles.popover,
+        focusStyles.ring,
         styles.pill,
         needsYou > 0 && styles.pillWaiting,
         live && styles.pillLifted,
@@ -560,6 +562,7 @@ export function AskPills({ asks }: { asks: AskPanel[] }): ReactElement {
                 type="button"
                 {...stylex.props(
                   surfaceStyles.popover,
+                  focusStyles.ring,
                   styles.pill,
                   waiting && styles.pillWaiting,
                   live && styles.pillLifted,
@@ -687,7 +690,11 @@ function AskList({
           <button
             key={key}
             type="button"
-            {...stylex.props(menuStyles.item, styles.row)}
+            {...stylex.props(
+              focusStyles.ringInset,
+              menuStyles.item,
+              styles.row,
+            )}
             aria-label={`Open Ask: ${presence.agentName}, ${presence.status}`}
             onClick={() => onOpen(key)}
           >
@@ -1103,8 +1110,6 @@ const styles = stylex.create({
     cursor: "pointer",
     touchAction: "none",
     userSelect: "none",
-    outline: { default: null, ":focus-visible": `1px solid ${tokens.accent}` },
-    outlineOffset: { default: null, ":focus-visible": "1px" },
   },
   // Beside the window, it moves with the window.
   pillFixed: {
