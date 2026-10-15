@@ -8,10 +8,11 @@ import type {
   ReviewCanvasUi,
 } from "@dev.fast/review-protocol";
 import * as stylex from "@stylexjs/stylex";
-import { useEffect, useRef, useState } from "react";
+import { createRef, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ApiCanvas } from "./api-canvas";
+import { type DiffFilePicker, DiffFilePickerContext } from "./diff-file-picker";
 import { CanvasUiContext } from "./host/canvas-ui";
 import { FirstRun, readOnboardingSkipped } from "./onboarding/first-run";
 import { NewWhiteboard } from "./onboarding/new-whiteboard";
@@ -219,6 +220,7 @@ export function mountReviewCanvas(
   let disposed = false;
   let themeSubscription: { dispose(): void } | null = null;
   const findHost = createReviewFindHost();
+  const diffFilePicker = createRef<DiffFilePicker>();
   container.classList.add("review-canvas-root");
   // The canvas stylesheet is compiled inside @scope (.review-canvas-root),
   // where the scope root itself is only matched by :scope — a theme class on
@@ -280,7 +282,9 @@ export function mountReviewCanvas(
       <ReviewContainerProvider container={container}>
         <CanvasUiContext.Provider value={ui}>
           <UiHostProvider useTooltip={useTooltip}>
-            <ReviewCanvas content={content} findHost={findHost} />
+            <DiffFilePickerContext.Provider value={diffFilePicker}>
+              <ReviewCanvas content={content} findHost={findHost} />
+            </DiffFilePickerContext.Provider>
           </UiHostProvider>
         </CanvasUiContext.Provider>
       </ReviewContainerProvider>,
@@ -303,6 +307,12 @@ export function mountReviewCanvas(
         (content.kind === "api" || content.kind === "home") &&
         findHost.showFind(seed)
       );
+    },
+    diffFiles() {
+      return diffFilePicker.current?.files();
+    },
+    revealDiffFile(path) {
+      diffFilePicker.current?.reveal(path);
     },
     dispose() {
       if (disposed) return;

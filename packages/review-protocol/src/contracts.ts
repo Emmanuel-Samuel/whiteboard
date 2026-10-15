@@ -806,6 +806,9 @@ export interface ReviewCanvasHandle extends ReviewDisposable {
   update(content: ReviewCanvasContent): void;
   focus(): void;
   showFind(seed?: string): boolean;
+  /** Undefined when the canvas shows no review. */
+  diffFiles(): Promise<readonly ReviewDiffFileWire[]> | undefined;
+  revealDiffFile(path: string): void;
 }
 
 export const REVIEW_CANVAS_RESUME_EVENT = "dev-fast-review-canvas-resume";
@@ -1315,6 +1318,41 @@ export function summarizeReviewDiffFiles(
       deletions: total.deletions + (file.deletions ?? 0),
     }),
     { fileCount: 0, additions: 0, deletions: 0 },
+  );
+}
+
+/** Diagram evidence may provide context outside the comparison's changed-file list. */
+export function lensDiffFiles(
+  files: readonly ReviewDiffFileWire[],
+  lens: ReviewDiffLens,
+): readonly ReviewDiffFileWire[] {
+  const known = new Set(
+    files.flatMap((file) => [
+      file.path,
+      ...(file.previousPath ? [file.previousPath] : []),
+    ]),
+  );
+
+  const context: ReviewDiffFileWire[] = [];
+
+  if (!lens.wholeFiles)
+    for (const range of lens.ranges) {
+      if (known.has(range.file)) continue;
+      known.add(range.file);
+      context.push({
+        path: range.file,
+        status: "unchanged",
+        additions: 0,
+        deletions: 0,
+      });
+    }
+
+  return [...files, ...context].filter((file) =>
+    lens.ranges.some(
+      (range) =>
+        range.file ===
+        (range.side === "base" ? (file.previousPath ?? file.path) : file.path),
+    ),
   );
 }
 
