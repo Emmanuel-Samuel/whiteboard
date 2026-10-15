@@ -1,5 +1,12 @@
 import { drawMotion } from "@canvas/draw-motion.stylex";
-import { fontSize, fontWeight, motion, radius } from "@canvas/scale.stylex";
+import {
+  fontSize,
+  fontWeight,
+  leading,
+  motion,
+  radius,
+  space,
+} from "@canvas/scale.stylex";
 import { IconButton, buttonStyles } from "@canvas/ui/button";
 import { focusStyles } from "@canvas/ui/focus";
 import { iconStyles } from "@canvas/ui/icon-styles";
@@ -933,7 +940,7 @@ const styles = stylex.create({
     minHeight: 0,
     height: "100%",
     color: tokens.ink,
-    font: `${fontSize.small}/1.5 ${tokens.fontMono}`,
+    font: `${fontSize.small}/${leading.normal} ${tokens.fontMono}`,
   },
   // The sidebar is the tray; its right padding holds the divider.
   sidebar: {
@@ -943,7 +950,7 @@ const styles = stylex.create({
     overflow: "hidden",
     display: "flex",
     flexDirection: "column",
-    paddingRight: "16px",
+    paddingRight: space.s16,
     backgroundColor: tokens.tray,
   },
   hidden: {
@@ -953,10 +960,10 @@ const styles = stylex.create({
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: "6px",
+    gap: space.s6,
     flexShrink: 0,
     width: "44px",
-    paddingBottom: "8px",
+    paddingBottom: space.s8,
     overflowX: "hidden",
     overflowY: "auto",
     backgroundColor: tokens.tray,
@@ -971,7 +978,7 @@ const styles = stylex.create({
     alignSelf: "stretch",
     flexShrink: 0,
     minHeight: "52px",
-    marginBottom: "2px",
+    marginBottom: space.s2,
     borderBottomWidth: "1px",
     borderBottomStyle: "solid",
     borderBottomColor: tokens.rule,
@@ -980,7 +987,7 @@ const styles = stylex.create({
   railRing: {
     flexDirection: "column",
     gap: "3px",
-    lineHeight: 1,
+    lineHeight: leading.none,
   },
   // 5ch is five letters in Geist Mono.
   railLens: {
@@ -1007,8 +1014,8 @@ const styles = stylex.create({
     justifyContent: "center",
     flexShrink: 0,
     width: "22px",
-    marginTop: "2px",
-    paddingTop: "8px",
+    marginTop: space.s2,
+    paddingTop: space.s8,
     borderTopWidth: "1px",
     borderTopStyle: "solid",
     borderTopColor: tokens.rule,
@@ -1017,10 +1024,10 @@ const styles = stylex.create({
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: "8px",
+    gap: space.s8,
     flexShrink: 0,
     minHeight: "52px",
-    padding: "0 14px 0 16px",
+    padding: `0 ${space.s14} 0 ${space.s16}`,
     borderBottomWidth: "1px",
     borderBottomStyle: "solid",
     borderBottomColor: tokens.rule,
@@ -1050,7 +1057,7 @@ const styles = stylex.create({
     minHeight: 0,
     overflow: "auto",
     position: "relative",
-    paddingTop: { default: null, ":has(> .courier)": "14px" },
+    paddingTop: { default: null, ":has(> .courier)": space.s14 },
   },
   files: {
     display: "flex",
@@ -1060,22 +1067,22 @@ const styles = stylex.create({
     overflow: "hidden",
   },
   heading: {
-    padding: "10px 14px 6px 16px",
+    padding: `${space.s10} ${space.s14} ${space.s6} ${space.s16}`,
   },
   lensesHeading: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingBottom: "2px",
+    paddingBottom: space.s2,
   },
   hint: {
-    padding: "0 14px 6px 16px",
+    padding: `0 ${space.s14} ${space.s6} ${space.s16}`,
     color: tokens.inkFaint,
-    font: `${fontSize.small}/16px ${tokens.fontMono}`,
+    font: `${fontSize.small}/${leading.px16} ${tokens.fontMono}`,
   },
   untracked: {
     flexShrink: 0,
-    paddingTop: 6,
+    paddingTop: space.s6,
   },
   nativeTree: {
     flex: 1,
@@ -1094,7 +1101,7 @@ const styles = stylex.create({
   row: {
     display: "flex",
     alignItems: "center",
-    paddingRight: "10px",
+    paddingRight: space.s10,
     gap: "7px",
   },
   toggle: {
@@ -1102,9 +1109,9 @@ const styles = stylex.create({
     flex: 1,
     minWidth: 0,
     alignItems: "center",
-    gap: "8px",
+    gap: space.s8,
     textAlign: "left",
-    padding: "3px 4px 3px 8px",
+    padding: `3px ${space.s4} 3px ${space.s8}`,
     font: "inherit",
     color: "inherit",
     cursor: "pointer",
@@ -1134,13 +1141,13 @@ const styles = stylex.create({
     display: "flex",
     minWidth: 0,
     alignItems: "center",
-    gap: "8px",
+    gap: space.s8,
     height: "24px",
-    padding: "0 8px",
+    padding: `0 ${space.s8}`,
     borderRadius: radius.pill,
   },
   chipActive: {
-    paddingRight: "4px",
+    paddingRight: space.s4,
     backgroundColor: tokens.markerTint,
   },
   icon: {
@@ -1149,7 +1156,7 @@ const styles = stylex.create({
   name: {
     minWidth: 0,
     flex: "0 1 auto",
-    lineHeight: 1.5,
+    lineHeight: leading.normal,
   },
   nameRelabel: {
     animationName: { default: relabel, [stylex.env.reducedMotion]: "none" },
@@ -1181,7 +1188,7 @@ const styles = stylex.create({
     flex: "0 0 16px",
     width: "16px",
     minWidth: "16px",
-    marginLeft: "-16px",
+    marginLeft: `-${space.s16}`,
     backgroundColor: tokens.tray,
     "::before": {
       left: "auto",
@@ -1233,13 +1240,13 @@ const styles = stylex.create({
     alignItems: "center",
     gridRow: 1,
     alignSelf: "start",
-    padding: "0 10px",
+    padding: `0 ${space.s10}`,
     backgroundColor: tokens.surface,
     color: tokens.inkFaint,
-    font: `${fontSize.small}/1 ${tokens.fontMono}`,
+    font: `${fontSize.small}/${leading.none} ${tokens.fontMono}`,
   },
   error: {
-    padding: "8px 12px",
+    padding: `${space.s8} ${space.s12}`,
   },
 });
 
