@@ -93,8 +93,12 @@ const SSH_SENTENCES: [RegExp, (alias: string) => string][] = [
 	[/(Operation|Connection) timed out/, (alias) => `The SSH connection to ${alias} timed out. Check that it is on and reachable from this network.`],
 ];
 
-function sshFailureSentence(stderr: string, alias: string): string | undefined {
-	return SSH_SENTENCES.find(([pattern]) => pattern.test(stderr))?.[1](alias);
+/** A direct session cannot prompt, so a key with a passphrase only works through ssh-agent. */
+const DIRECT_PERMISSION_HINT = 'Whiteboard cannot ask for a password or passphrase here: if your key has one, add it to ssh-agent with "ssh-add", then retry.';
+
+function sshFailureSentence(stderr: string, alias: string, direct = false): string | undefined {
+	const sentence = SSH_SENTENCES.find(([pattern]) => pattern.test(stderr))?.[1](alias);
+	return direct && sentence && /Permission denied/.test(stderr) ? `${sentence} ${DIRECT_PERMISSION_HINT}` : sentence;
 }
 
 const SSH_DROPS: [RegExp, (alias: string) => string][] = [
@@ -599,7 +603,7 @@ export class ReviewRemoteHost {
 				detail: sshDropSentence(last, this.alias) ?? `The SSH connection to ${this.alias} ended: ${last || exited}`,
 			});
 		}
-		const sentence = sshFailureSentence(this.masterStderr, this.alias);
+		const sentence = sshFailureSentence(this.masterStderr, this.alias, this.direct);
 		if (sentence) this.options.log(`${this.alias}: ${exited} ${firstLines(this.masterStderr)}`);
 		this.fail({
 			state: classifySshFailure(this.masterStderr, this.promptCancelled),
