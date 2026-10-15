@@ -4,19 +4,35 @@ import { tokens } from "@canvas/tokens.stylex";
 import * as stylex from "@stylexjs/stylex";
 import type { ComponentProps } from "react";
 
-type TextFieldProps = Omit<ComponentProps<"input">, "className" | "style"> & {
+type Styled<Props> = Omit<Props, "className" | "style"> & {
   className?: string;
   xstyle?: StyleArg;
 };
 
-export function TextField({ className, xstyle, ...props }: TextFieldProps) {
+export function TextField({
+  className,
+  xstyle,
+  ...props
+}: Styled<ComponentProps<"input">>) {
   return (
     <input {...props} {...withClass(className, fieldStyles.box, xstyle)} />
   );
 }
 
-// Exported for fields that are not a bare input: a textarea, a select, or a
-// shell around an input and its buttons.
+export function TextArea({
+  className,
+  xstyle,
+  ...props
+}: Styled<ComponentProps<"textarea">>) {
+  return (
+    <textarea
+      {...props}
+      {...withClass(className, fieldStyles.box, fieldStyles.multiline, xstyle)}
+    />
+  );
+}
+
+// Exported for a shell around an input and its buttons or icon.
 export const fieldStyles = stylex.create({
   box: {
     boxSizing: "border-box",
