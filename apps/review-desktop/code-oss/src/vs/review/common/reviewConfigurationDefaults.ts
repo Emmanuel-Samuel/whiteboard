@@ -114,7 +114,7 @@ export const reviewConfigurationDefaults = {
  * Defaults that keep the curated built-in extensions quiet.
  *
  * Review ships no marketplace, so an extension that prompts to install or update
- * something offers the reader a dead end. Every key here closes one such prompt.
+ * something offers the reader a dead end. Most keys here close one such prompt.
  * Keep this aligned with the curated groups in
  * `scripts/curated-extensions.manifest.mjs`, whose contract test is
  * `scripts/curated-extensions.test.mjs`.
@@ -141,15 +141,26 @@ export const curatedExtensionConfigurationDefaults = {
 	'rust-analyzer.showUnlinkedFileNotification': false,
 	'rust-analyzer.notifications.cargoTomlNotFound': false,
 	'rust-analyzer.showRequestFailedErrorNotification': false,
+	// These build the checkout. A review only needs navigation.
+	'rust-analyzer.checkOnSave': false,
+	'rust-analyzer.lens.run.enable': false,
+	'rust-analyzer.lens.debug.enable': false,
 
 	// The Swift extension can offer to install Swiftly. Review uses the Swift
 	// toolchain that the user installed and made available on the shell PATH.
 	'swift.disableSwiftlyInstallPrompt': true,
+	// These write files into the checkout or build the package.
+	'swift.autoGenerateLaunchConfigurations': false,
+	'swift.showTestCodeLenses': false,
 
 	// The .NET support extension must not send its own telemetry or expose AI
 	// tools. C# uses the system .NET SDK that Review resolves from the shell PATH.
 	'dotnetAcquisitionExtension.enableTelemetry': false,
-	'dotnetAcquisitionExtension.enableLanguageModelTools': false
+	'dotnetAcquisitionExtension.enableLanguageModelTools': false,
+	// These download packages or build the project.
+	'dotnet.projects.enableAutomaticRestore': false,
+	'csharp.suppressDotnetRestoreNotification': true,
+	'dotnet.codeLens.enableTestsCodeLens': false
 
 	// charliermarsh.ruff already defaults `ruff.showNotifications` to "off".
 	// astral-sh.ty, vscodevim.vim and tuttieee.emacs-mcx contribute no prompts.
