@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { azureDevOpsProvider } from "./azure-devops-provider.js";
 import { ReviewInputError } from "./document.js";
 import { openLocalReviewStore } from "./local-data.js";
 import { resolvePullRequest } from "./provider.js";
@@ -159,11 +160,12 @@ describe("creating a review from a pull request URL alone", () => {
   };
 
   /** A local repository stands in for acme/widget on the host. */
-  const pointAtUpstream = (gitDir: string, host = "github.com") => {
+  const pointAtUpstream = (
+    gitDir: string,
+    remote = "https://github.com/acme/widget.git",
+  ) => {
     const config = (...args: string[]) =>
       execFileSync("git", ["--git-dir", gitDir, "config", ...args]);
-
-    const remote = `https://${host}/acme/widget.git`;
 
     config("remote.origin.url", remote);
     config(`url.${upstream}.insteadOf`, remote);
@@ -199,6 +201,14 @@ describe("creating a review from a pull request URL alone", () => {
       pullRequests: {
         ...defaultPullRequestDeps,
         run: async (file, args, options) => {
+          if (file === "az")
+            return JSON.stringify({
+              title: pr.title,
+              sourceRefName: "refs/heads/feature",
+              targetRefName: `refs/heads/${pr.baseRefName}`,
+              repository: { name: "widget", project: { name: "project" } },
+            });
+
           if (file !== "gh")
             return defaultPullRequestDeps.run(file, args, options);
           ghCalls++;
@@ -400,12 +410,37 @@ describe("creating a review from a pull request URL alone", () => {
     );
     expect(ghCalls).toBe(0);
 
-    pointAtUpstream(path.join(checkout, ".git"), "ghe.example.com");
+    pointAtUpstream(
+      path.join(checkout, ".git"),
+      "https://ghe.example.com/acme/widget.git",
+    );
     const { reviewId } = await create();
 
     expect(local.store.read(reviewId)).toMatchObject({
       pins: { repositoryId, base: fork, head: upstreamHead() },
       origin: { pullRequestUrl: enterprise, pullRequestNumber: 7 },
+    });
+  });
+
+  it("fetches an Azure DevOps PR from a remote of its repository", async () => {
+    const azure =
+      "https://dev.azure.com/acme/project/_git/widget/pullrequest/7";
+
+    gitIn(upstream)("branch", "feature", "refs/pull/7/head");
+    pointAtUpstream(
+      path.join(checkout, ".git"),
+      "https://dev.azure.com/acme/project/_git/widget",
+    );
+    const { id: repositoryId } = await local.data.register(checkout);
+
+    const { reviewId } = await local.store.execute(
+      command({ type: "create", pullRequestUrl: azure }),
+    );
+
+    expect(local.store.read(reviewId)).toMatchObject({
+      title: "Add widgets",
+      pins: { repositoryId, base: fork, head: upstreamHead() },
+      origin: { pullRequestUrl: azure, pullRequestNumber: 7 },
     });
   });
 
@@ -460,4 +495,58 @@ describe("creating a review from a pull request URL alone", () => {
       );
     },
   );
+});
+
+describe("an Azure DevOps pull request", () => {
+  const address = {
+    host: "dev.azure.com",
+    slug: "acme/My Project/widget",
+    number: 7,
+  };
+
+  it("reads legacy and percent-encoded URLs as one address", () => {
+    for (const url of [
+      "https://dev.azure.com/acme/My%20Project/_git/widget/pullrequest/7",
+      "https://acme.visualstudio.com/My%20Project/_git/widget/pullrequest/7",
+      "https://acme.visualstudio.com/DefaultCollection/My%20Project/_git/widget/pullrequest/7",
+    ])
+      expect(resolvePullRequest(url).address).toEqual(address);
+  });
+
+  it("matches HTTPS and SSH remotes of its repository", () => {
+    for (const remote of [
+      "https://user@dev.azure.com/acme/My%20Project/_git/widget",
+      "https://acme.visualstudio.com/DefaultCollection/My%20Project/_git/widget.git",
+      "git@ssh.dev.azure.com:v3/acme/My%20Project/widget",
+      "acme@vs-ssh.visualstudio.com:v3/acme/My%20Project/widget.git",
+    ])
+      expect(azureDevOpsProvider.matchesRemote(remote, address)).toBe(true);
+
+    expect(
+      azureDevOpsProvider.matchesRemote(
+        "https://dev.azure.com/acme/My%20Project/_git/other",
+        address,
+      ),
+    ).toBe(false);
+  });
+
+  it("says a missing PR was not found, with az's reason", async () => {
+    const { provider } = resolvePullRequest(
+      "https://dev.azure.com/acme/project/_git/widget/pullrequest/7",
+    );
+
+    const error = await provider
+      .readPullRequest(address, {
+        run: () =>
+          Promise.reject(
+            new Error("az repos: TF401027: The pull request does not exist."),
+          ),
+        fetch: () => Promise.reject(new Error("no network in tests")),
+      })
+      .catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ReviewInputError);
+    expect(error).toMatchObject({ status: 404 });
+    expect(String(error)).toMatch(/TF401027/);
+  });
 });

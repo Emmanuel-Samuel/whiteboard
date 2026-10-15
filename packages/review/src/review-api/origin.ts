@@ -7,7 +7,7 @@ export const pullRequestUrl = z
   .string()
   .refine(
     (url) => pullRequestProvider(url) !== undefined,
-    "Use a canonical GitHub PR URL: https://github.com/owner/repository/pull/123, or the same path on a GitHub Enterprise host.",
+    "Use a canonical PR URL: https://github.com/owner/repository/pull/123, the same path on a GitHub Enterprise host, or https://dev.azure.com/org/project/_git/repository/pullrequest/123.",
   );
 
 /** One key per PR: GitHub owner and repository names are case-insensitive,
