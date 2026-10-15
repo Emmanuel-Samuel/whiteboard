@@ -255,8 +255,8 @@ export class ReviewDesktopHost extends Disposable {
     return listSshAliases(reviewSshConfigPath());
   }
 
-  retryRemoteHost(alias: string): void {
-    this.remoteHosts?.retry(alias);
+  async retryRemoteHost(alias: string): Promise<void> {
+    await this.remoteHosts?.retry(alias);
   }
 
   async getRemoteLanguageEndpoint(serverId: string) {
@@ -287,8 +287,8 @@ export class ReviewDesktopHost extends Disposable {
     return this.remoteHosts?.install(alias) ?? Promise.resolve();
   }
 
-  detectRemoteAgents(alias: string): Promise<ReviewRemoteAgent[] | undefined> {
-    return this.remoteHosts?.detectAgents(alias) ?? Promise.resolve(undefined);
+  detectRemoteAgents(alias: string, refresh?: boolean): Promise<ReviewRemoteAgent[] | undefined> {
+    return this.remoteHosts?.detectAgents(alias, refresh) ?? Promise.resolve(undefined);
   }
 
   connectRemoteAgents(alias: string, ids: readonly unknown[]): Promise<ReviewRemoteAgentResult[]> {

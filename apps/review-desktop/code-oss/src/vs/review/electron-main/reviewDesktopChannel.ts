@@ -63,12 +63,13 @@ export class ReviewDesktopChannel implements IServerChannel {
       return (await this.host.getRemoteHostState(serverId, typeof last === "string" ? last : undefined)) as T;
     }
     if (command === "retryRemoteHost") {
-      if (typeof arg === "string") this.host.retryRemoteHost(arg);
+      if (typeof arg === "string") await this.host.retryRemoteHost(arg);
       return undefined as T;
     }
     if (command === "detectRemoteAgents") {
-      if (typeof arg !== "string") throw new Error("Unknown agents request.");
-      return ((await this.host.detectRemoteAgents(arg)) ?? null) as T;
+      const [alias, refresh] = Array.isArray(arg) ? arg : [arg];
+      if (typeof alias !== "string") throw new Error("Unknown agents request.");
+      return ((await this.host.detectRemoteAgents(alias, refresh === true)) ?? null) as T;
     }
     if (command === "connectRemoteAgents") {
       const { alias, agents } = (arg ?? {}) as { alias?: unknown; agents?: unknown };

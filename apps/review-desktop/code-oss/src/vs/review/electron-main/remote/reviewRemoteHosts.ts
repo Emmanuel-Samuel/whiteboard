@@ -163,10 +163,10 @@ export class ReviewRemoteHosts {
 		this.publish();
 	}
 
-	retry(alias: string): void {
+	async retry(alias: string): Promise<void> {
 		const host = this.hosts.get(alias);
 		if (host?.quiesced && !this.uninstalling.has(alias)) host.unquiesce();
-		else if (host?.state.endpoint) void host.recheck();
+		else if (host?.state.endpoint) await host.recheck();
 		else host?.retry();
 	}
 
@@ -175,8 +175,8 @@ export class ReviewRemoteHosts {
 		this.hosts.get(alias)?.retry();
 	}
 
-	detectAgents(alias: string): Promise<ReviewRemoteAgent[] | undefined> {
-		return this.hosts.get(alias)?.detectAgents() ?? Promise.resolve(undefined);
+	detectAgents(alias: string, refresh?: boolean): Promise<ReviewRemoteAgent[] | undefined> {
+		return this.hosts.get(alias)?.detectAgents(refresh) ?? Promise.resolve(undefined);
 	}
 
 	connectAgents(alias: string, ids: readonly unknown[]): Promise<ReviewRemoteAgentResult[]> {
