@@ -27,7 +27,7 @@ import { ChatIcon, ChevronDownIcon } from "./icons";
 import { useNotify } from "./notify";
 import { useReviewDiffFiles } from "./review-diff-files-context";
 import { useOptionalReviewPanelStore } from "./review-panel";
-import { fontSize, layer } from "./scale.stylex";
+import { fontSize, layer, motion } from "./scale.stylex";
 import { themeStyles } from "./theme-styles";
 import { tokens } from "./tokens.stylex";
 import { Button } from "./ui/button";
@@ -358,7 +358,12 @@ export function AgentSelectionProvider({
                               onClick={() => setChoosing((value) => !value)}
                               xstyle={styles.splitMenu}
                             >
-                              <ChevronDownIcon />
+                              <ChevronDownIcon
+                                xstyle={[
+                                  styles.chevron,
+                                  choosing && styles.chevronOpen,
+                                ]}
+                              />
                             </Button>
                           ) : null}
                         </span>
@@ -439,6 +444,15 @@ const styles = stylex.create({
     borderTopLeftRadius: 0,
     borderBottomLeftRadius: 0,
     boxShadow: `inset 1px 0 0 color-mix(in srgb, ${tokens.onAccent} 28%, transparent)`,
+  },
+  chevron: {
+    transition: {
+      default: `transform ${motion.medium} cubic-bezier(0.2, 0.7, 0.2, 1)`,
+      "@media (prefers-reduced-motion: reduce)": "none",
+    },
+  },
+  chevronOpen: {
+    transform: "rotate(180deg)",
   },
   key: {
     opacity: 0.65,
