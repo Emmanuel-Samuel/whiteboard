@@ -1,6 +1,7 @@
 import { fontSize, fontWeight, motion, radius } from "@canvas/scale.stylex";
 import { Button } from "@canvas/ui/button";
 import { surfaceStyles } from "@canvas/ui/surface";
+import { textStyles } from "@canvas/ui/text";
 import type { ReviewStackLayer } from "@dev.fast/review-protocol";
 import * as stylex from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
@@ -93,7 +94,7 @@ export function ReviewStackSelector(): ReactElement | null {
         onClick={() => setOpen(!open)}
       >
         <StackIcon xstyle={styles.triggerIcon} />
-        <span {...stylex.props(styles.triggerNumber, styles.ellipsis)}>
+        <span {...stylex.props(styles.triggerNumber, textStyles.truncate)}>
           {label(layers[index]!)}
         </span>
         <span {...stylex.props(styles.triggerPosition)}>
@@ -166,7 +167,7 @@ function LayerRow({
       <span {...stylex.props(styles.copy)}>
         <span
           {...stylex.props(
-            styles.ellipsis,
+            textStyles.truncate,
             styles.title,
             current && styles.titleCurrent,
             disabled && styles.faint,
@@ -177,7 +178,7 @@ function LayerRow({
         {detail && (
           <span
             {...stylex.props(
-              styles.ellipsis,
+              textStyles.truncate,
               styles.branch,
               current && styles.branchCurrent,
             )}
@@ -295,11 +296,6 @@ const styles = stylex.create({
     flexDirection: "column",
     gap: "2px",
     minWidth: 0,
-  },
-  ellipsis: {
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
   },
   title: {
     fontSize: fontSize.small,

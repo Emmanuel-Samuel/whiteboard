@@ -48,7 +48,7 @@ export function ReviewCommitsView({
             {countLabel(commits.length, "commit")}
           </strong>
           <span
-            {...stylex.props(styles.rangeRefs)}
+            {...stylex.props(textStyles.truncate, styles.rangeRefs)}
             title={`${range.baseCommit}..${range.headCommit}`}
           >
             {shortRef(range.baseRef || range.baseCommit)} →{" "}
@@ -141,7 +141,9 @@ function CommitRow({
           title={commit.subject}
         >
           <DisclosureChevron expanded={expanded} xstyle={styles.chevron} />
-          <strong {...stylex.props(styles.subject)}>{commit.subject}</strong>
+          <strong {...stylex.props(textStyles.truncate, styles.subject)}>
+            {commit.subject}
+          </strong>
         </button>
         <span {...stylex.props(styles.actions)}>
           <span {...stylex.props(styles.sha)}>{commit.commit.slice(0, 8)}</span>
@@ -184,7 +186,9 @@ function CommitRow({
               onClick={() => onOpenDiff(commit, "file", file.path)}
             >
               <FileMark status={file.status} />
-              <span {...stylex.props(styles.filePath)}>{file.path}</span>
+              <span {...stylex.props(textStyles.truncate, styles.filePath)}>
+                {file.path}
+              </span>
               <DiffCount
                 additions={file.additions}
                 deletions={file.deletions}
@@ -304,11 +308,8 @@ const styles = stylex.create({
   },
   rangeRefs: {
     minWidth: 0,
-    overflow: "hidden",
     color: tokens.inkMuted,
     font: `${fontSize.small} ${tokens.fontMono}`,
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
   },
   date: {
     display: "flex",
@@ -398,12 +399,9 @@ const styles = stylex.create({
     },
   },
   subject: {
-    overflow: "hidden",
     color: tokens.ink,
     fontSize: fontSize.body,
     fontWeight: fontWeight.medium,
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
   },
   actions: {
     position: "relative",
@@ -453,9 +451,6 @@ const styles = stylex.create({
   filePath: {
     minWidth: 0,
     flex: 1,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
   },
   filesFooter: {
     padding: "6px 12px 4px 38px",

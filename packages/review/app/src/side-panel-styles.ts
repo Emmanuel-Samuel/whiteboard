@@ -110,15 +110,12 @@ export const panelStyles = stylex.create({
     fontFamily: tokens.fontMono,
   },
   heading: {
-    overflow: "hidden",
     margin: 0,
     color: tokens.ink,
     fontFamily: tokens.fontMono,
     fontSize: fontSize.ui,
     fontWeight: fontWeight.semibold,
     lineHeight: 1.3,
-    whiteSpace: "nowrap",
-    textOverflow: "ellipsis",
   },
   close: {
     flex: "0 0 auto",

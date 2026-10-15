@@ -885,7 +885,10 @@ function CommitDiffScopeBar({
       <code {...stylex.props(scopeBarStyles.sha)} title={commit.commit}>
         {commit.commit.slice(0, 8)}
       </code>
-      <span {...stylex.props(scopeBarStyles.subject)} title={commit.subject}>
+      <span
+        {...stylex.props(textStyles.truncate, scopeBarStyles.subject)}
+        title={commit.subject}
+      >
         {commit.subject}
       </span>
     </div>
@@ -922,11 +925,8 @@ const scopeBarStyles = stylex.create({
   },
   subject: {
     minWidth: 0,
-    overflow: "hidden",
     color: tokens.ink,
     fontSize: fontSize.small,
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
   },
 });
 

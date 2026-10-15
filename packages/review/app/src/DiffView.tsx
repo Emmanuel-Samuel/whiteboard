@@ -88,7 +88,11 @@ function LensName({ title, phase }: { title: string; phase?: MotionPhase }) {
   return (
     <span
       ref={ref}
-      {...stylex.props(styles.name, phase === "relabel" && styles.nameRelabel)}
+      {...stylex.props(
+        textStyles.truncate,
+        styles.name,
+        phase === "relabel" && styles.nameRelabel,
+      )}
     >
       {title}
     </span>
@@ -478,7 +482,7 @@ export function ReviewDiffView({
               {...stylex.props(
                 textStyles.eyebrow,
                 styles.heading,
-                styles.filesHeading,
+                textStyles.truncate,
               )}
             >
               Files <span aria-hidden="true">·</span>{" "}
@@ -1125,11 +1129,6 @@ const styles = stylex.create({
     justifyContent: "space-between",
     paddingBottom: "2px",
   },
-  filesHeading: {
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
   hint: {
     padding: "0 14px 6px 16px",
     color: tokens.inkFaint,
@@ -1218,9 +1217,6 @@ const styles = stylex.create({
     minWidth: 0,
     flex: "0 1 auto",
     lineHeight: 1.5,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
   },
   nameRelabel: {
     animationName: { default: relabel, [stylex.env.reducedMotion]: "none" },

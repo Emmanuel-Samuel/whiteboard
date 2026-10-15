@@ -209,7 +209,11 @@ function ReviewPanelFrame({
           >
             {label}
           </span>
-          {title && <h2 {...stylex.props(panelStyles.heading)}>{title}</h2>}
+          {title && (
+            <h2 {...stylex.props(textStyles.truncate, panelStyles.heading)}>
+              {title}
+            </h2>
+          )}
           {titleAccessory}
         </div>
         <div {...stylex.props(panelStyles.actions)}>

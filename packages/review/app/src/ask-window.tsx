@@ -485,11 +485,19 @@ export function AskPills({ asks }: { asks: AskPanel[] }): ReactElement {
       <ChatIcon xstyle={[styles.logo, styles.askGlyph]} />
       <span {...stylex.props(styles.name)}>{asks.length} Asks</span>
       {needsYou ? (
-        <span {...stylex.props(styles.status, styles.statusWaiting)}>
+        <span
+          {...stylex.props(
+            textStyles.truncate,
+            styles.status,
+            styles.statusWaiting,
+          )}
+        >
           {needsYou} needs you
         </span>
       ) : answering ? (
-        <span {...stylex.props(styles.status)}>{answering} answering</span>
+        <span {...stylex.props(textStyles.truncate, styles.status)}>
+          {answering} answering
+        </span>
       ) : null}
       <Chip
         variant="pill"
@@ -564,7 +572,13 @@ export function AskPills({ asks }: { asks: AskPanel[] }): ReactElement {
                 {/* The logo says which agent; what it was asked says which
                     Ask. */}
                 {asked ? (
-                  <span {...stylex.props(styles.passage, styles.pillPassage)}>
+                  <span
+                    {...stylex.props(
+                      textStyles.truncate,
+                      styles.passage,
+                      styles.pillPassage,
+                    )}
+                  >
                     {asked}
                   </span>
                 ) : (
@@ -602,6 +616,7 @@ function PresenceStatus({ presence }: { presence: AskPresence }) {
   return (
     <span
       {...stylex.props(
+        textStyles.truncate,
         styles.status,
         presence.tone === "waiting" && styles.statusWaiting,
         presence.tone === "failed" && styles.statusFailed,
@@ -685,7 +700,9 @@ function AskList({
                 <PresenceStatus presence={presence} />
               </span>
               {asked ? (
-                <span {...stylex.props(styles.passage)}>{asked}</span>
+                <span {...stylex.props(textStyles.truncate, styles.passage)}>
+                  {asked}
+                </span>
               ) : null}
             </span>
           </button>
@@ -1118,12 +1135,9 @@ const styles = stylex.create({
   },
   status: {
     minWidth: 0,
-    overflow: "hidden",
     color: tokens.inkMuted,
     fontSize: fontSize.body,
     lineHeight: "16px",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
   },
   statusWaiting: {
     color: tokens.changeModified,
@@ -1199,13 +1213,10 @@ const styles = stylex.create({
   },
   passage: {
     minWidth: 0,
-    overflow: "hidden",
     color: tokens.inkMuted,
     fontFamily: tokens.fontSerif,
     fontSize: fontSize.ui,
     lineHeight: "17px",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
   },
   pillPassage: {
     flex: "0 1 auto",

@@ -1,3 +1,4 @@
+import { textStyles } from "@canvas/ui/text";
 import type {
   ReviewHostStatus,
   ReviewRemoteHostActions,
@@ -609,7 +610,7 @@ export function AskPanelContent({
   ) : (
     <TooltipLabel
       tooltip={modeTitle}
-      xstyle={[styles.mode, styles.settingsLabel]}
+      xstyle={[textStyles.truncate, styles.mode, styles.settingsLabel]}
     >
       {readOnly ? (
         <>
@@ -1029,13 +1030,10 @@ const styles = stylex.create({
     alignItems: "center",
     gap: "6px",
     minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
     color: tokens.inkMuted,
     fontFamily: tokens.fontMono,
     fontSize: fontSize.small,
     lineHeight: "14px",
-    whiteSpace: "nowrap",
   },
   // Holds the thread and, over its foot, the way back to the newest.
   threadFrame: {

@@ -178,7 +178,12 @@ export function AskHistoryList({
         </div>
         {passage ? (
           <figure {...stylex.props(askPanelStyles.selection)}>
-            <blockquote {...stylex.props(askPanelStyles.selectionQuote)}>
+            <blockquote
+              {...stylex.props(
+                textStyles.clamp2,
+                askPanelStyles.selectionQuote,
+              )}
+            >
               {passage.quote}
             </blockquote>
           </figure>
@@ -276,7 +281,12 @@ export function AskHistoryList({
                       {logos[entry.agent]({})}
                     </span>
                     <span {...stylex.props(styles.historyText)}>
-                      <span {...stylex.props(styles.historyTitle)}>
+                      <span
+                        {...stylex.props(
+                          textStyles.clamp2,
+                          styles.historyTitle,
+                        )}
+                      >
                         {title}
                       </span>
                       {source ? (
@@ -286,7 +296,12 @@ export function AskHistoryList({
                       ) : null}
                       {/* One passage's list quotes it once, above. */}
                       {!passage && target.kind === "text" ? (
-                        <span {...stylex.props(styles.historyQuote)}>
+                        <span
+                          {...stylex.props(
+                            textStyles.truncate,
+                            styles.historyQuote,
+                          )}
+                        >
                           {target.quote}
                         </span>
                       ) : null}
@@ -390,23 +405,16 @@ const styles = stylex.create({
     minWidth: 0,
   },
   historyTitle: {
-    display: "-webkit-box",
-    overflow: "hidden",
     fontFamily: tokens.fontSerif,
     fontSize: fontSize.reading,
     lineHeight: "22px",
-    WebkitBoxOrient: "vertical",
-    WebkitLineClamp: 2,
   },
   historyQuote: {
-    overflow: "hidden",
     color: tokens.inkMuted,
     fontFamily: tokens.fontSerif,
     fontSize: fontSize.ui,
     fontStyle: "italic",
     lineHeight: "20px",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
   },
   historyMeta: {
     color: tokens.inkFaint,
