@@ -1,5 +1,6 @@
 import { fontSize, fontWeight, radius } from "@canvas/scale.stylex";
 import { Button } from "@canvas/ui/button";
+import { Spinner } from "@canvas/ui/spinner";
 import {
   type ReviewHostStatus,
   type ReviewRemoteHostActions,
@@ -67,7 +68,7 @@ export function ConnectionChip() {
         ref={tooltip}
       >
         <span {...stylex.props(styles.text)}>{label}</span>
-        {spinning ? <RefreshIcon xstyle={styles.icon} spinning /> : null}
+        {spinning ? <Spinner /> : null}
       </span>
     );
 
@@ -90,6 +91,23 @@ export function ConnectionChip() {
         <span {...stylex.props(styles.action)}>{ACTION_WORDS[action]}</span>
       )}
     </button>
+  );
+}
+
+/** Shown while a remote review's language server starts. */
+export function LanguageServerChip({ host }: { host: string }) {
+  if (useContext(ConnectionContext)) return null;
+
+  return (
+    <span
+      {...withClass("language-server-chip", styles.chip, styles.neutral)}
+      role="status"
+    >
+      <span {...stylex.props(styles.text)}>
+        Starting language server on {host}
+      </span>
+      <Spinner />
+    </span>
   );
 }
 
@@ -177,6 +195,11 @@ const styles = stylex.create({
     color: tokens.changeModified,
     font: `${fontWeight.semibold} ${fontSize.small} ${tokens.fontMono}`,
     whiteSpace: "nowrap",
+  },
+  neutral: {
+    borderColor: tokens.chromeBorder,
+    backgroundColor: tokens.transparent,
+    color: tokens.chromeFgMuted,
   },
   // A long alias ends in an ellipsis; the tooltip has it all.
   text: {
