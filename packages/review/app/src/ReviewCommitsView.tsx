@@ -1,9 +1,10 @@
-import { fontSize, fontWeight, radius } from "@canvas/scale.stylex";
+import { fontSize, fontWeight } from "@canvas/scale.stylex";
 import { Button, IconButton, buttonStyles } from "@canvas/ui/button";
 import { CopyButton } from "@canvas/ui/copy";
 import { DisclosureChevron, disclosureStyles } from "@canvas/ui/disclosure";
 import { iconStyles } from "@canvas/ui/icon-styles";
 import { ArrowRightIcon, CodeIcon } from "@canvas/ui/icons";
+import { surfaceStyles } from "@canvas/ui/surface";
 import { textStyles } from "@canvas/ui/text";
 import {
   type ReviewCommitSummary,
@@ -133,7 +134,13 @@ function CommitRow({
     : 0;
 
   return (
-    <article {...stylex.props(styles.card, expanded && styles.cardExpanded)}>
+    <article
+      {...stylex.props(
+        surfaceStyles.card,
+        styles.card,
+        expanded && styles.cardExpanded,
+      )}
+    >
       <div {...stylex.props(styles.header, expanded && styles.headerExpanded)}>
         <button
           type="button"
@@ -354,12 +361,6 @@ const styles = stylex.create({
   },
   card: {
     marginBottom: "6px",
-    overflow: "hidden",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: tokens.rule,
-    borderRadius: radius.surface,
-    backgroundColor: tokens.surface,
     boxShadow: "none",
   },
   cardExpanded: {
