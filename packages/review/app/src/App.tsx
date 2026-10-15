@@ -886,13 +886,15 @@ function CommitDiffScopeBar({
 }) {
   return (
     <div {...stylex.props(scopeBarStyles.bar)}>
-      <button
-        type="button"
-        {...stylex.props(buttonStyles.reset, scopeBarStyles.back)}
+      <Button
+        variant="link"
+        tone="accent"
+        xstyle={scopeBarStyles.back}
         onClick={onBack}
       >
-        <ArrowLeftIcon xstyle={[iconStyles.inline, iconStyles.glyph]} /> Commits
-      </button>
+        <ArrowLeftIcon xstyle={iconStyles.inline} />
+        Commits
+      </Button>
       <code {...stylex.props(scopeBarStyles.sha)} title={commit.commit}>
         {commit.commit.slice(0, 8)}
       </code>
@@ -922,8 +924,7 @@ const scopeBarStyles = stylex.create({
   back: {
     height: "20px",
     flex: "0 0 auto",
-    padding: 0,
-    color: tokens.accent,
+    gap: "4px",
     fontSize: fontSize.micro,
   },
   sha: {
