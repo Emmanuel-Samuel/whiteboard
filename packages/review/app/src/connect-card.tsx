@@ -188,14 +188,13 @@ export function ConnectCard({
               )}
             </pre>
             {collapsed ? (
-              <button
-                type="button"
-                {...stylex.props(styles.expand)}
+              <Button
+                xstyle={styles.expand}
                 aria-expanded={false}
                 onClick={() => setExpanded(true)}
               >
                 Show full {noun}
-              </button>
+              </Button>
             ) : null}
           </div>
           <div {...stylex.props(promptStyles.actions)}>
@@ -454,18 +453,12 @@ const styles = stylex.create({
     bottom: 0,
     left: "50%",
     transform: "translateX(-50%)",
-    padding: "3px 12px",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: {
-      default: tokens.ruleSoft,
-      ":hover": tokens.inkMuted,
-    },
     borderRadius: radius.pill,
-    backgroundColor: tokens.raised,
-    color: tokens.ink,
-    font: `${fontSize.body}/18px ${tokens.fontMono}`,
-    cursor: "pointer",
+    backgroundColor: {
+      default: tokens.raised,
+      ":hover:not(:disabled)": tokens.well,
+    },
+    fontFamily: tokens.fontMono,
   },
   collapse: {
     marginRight: "auto",
