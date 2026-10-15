@@ -14,6 +14,7 @@ import test from "node:test";
 
 import type { ReviewGatewayHost } from "../../common/reviewProtocol.js";
 import { attachOutput, COMMIT, detectOutput, FAKE_SERVER_ID, fakeClock, fakeSsh, flush, healthServer, until, type FakeRemote } from "./test/fakeSsh.js";
+import { INSTALL_SCRIPT } from "./test/installScript.js";
 import { classifySshFailure, languageCommitMismatch, ReviewRemoteHost, type ReviewRemoteHostOptions, type ReviewRemoteInstallFlow, type ReviewRemoteInstallMode, type ReviewRemoteInstallRunInput } from "./reviewRemoteHost.js";
 import { ReviewRemoteNoTarball } from "./reviewRemoteArtifacts.js";
 import { openRemoteInstallConsent } from "./reviewRemoteInstallConsent.js";
@@ -102,6 +103,7 @@ async function installFlow(
 			if (error) throw error;
 			return INSTALLED;
 		},
+		script: async () => INSTALL_SCRIPT,
 		origin: () => (options.origin === null ? undefined : (options.origin ?? "https://install.dev.fast")),
 		artifact:
 			options.artifact ??
@@ -724,18 +726,17 @@ test("the version present: no prompt and no install shown; the installed CLI att
 	);
 });
 
-test("the version present with another sha256 is not installed: the user is asked and the install is shown", async (t) => {
+test("the version present with another sha256 is reinstalled without asking, and the install is shown", async (t) => {
 	const port = await healthServer(t);
-	const { flow, prompts, runs } = await installFlow(t, "ask", { answers: [true], steps: STEPS });
+	const { flow, prompts, runs } = await installFlow(t, "ask", { steps: STEPS });
 	const { host, reports, last } = hostFor(t, { probe: { installed: [at("0.1.5"), at("0.1.6", "b".repeat(64))] } }, port, "wb-test-a", "/tmp/wb-ssh-test", flow);
 
 	host.start();
 	await until(() => last()?.endpoint !== undefined);
 
-	assert.equal(prompts.length, 1);
+	assert.equal(prompts.length, 0);
 	assert.equal(runs.length, 1);
 	assert.deepEqual(reports.find((report) => report.installing)?.installing, { step: "preparing" });
-	assert.equal(await flow.consent.get("wb-test-a"), "allow");
 });
 
 test("the version absent with installs always: each step is reported, then the host attaches", async (t) => {
@@ -774,7 +775,6 @@ test("the version absent, asked and declined: not-installed and declined, and no
 		alias: "wb-test-a",
 		problem: { state: "not-installed", detail: "Whiteboard is not installed on wb-test-a. Install Whiteboard 0.1.6 there." },
 		declined: true,
-		target: "linux-arm64",
 	});
 	assert.equal(clock.pending, 0);
 	assert.deepEqual(JSON.parse(await readFile(consentFile, "utf8")).aliases, { "wb-test-a": "deny" });
@@ -983,7 +983,6 @@ test("a server of another version a user started is left, and the host is incomp
 			state: "incompatible",
 			detail: "A Whiteboard server 0.1.5 started by a user is running on wb-test-a; stop it to use this Desktop's version.",
 		},
-		target: "linux-arm64",
 	});
 	assert.equal(clock.pending, 0);
 	assert.equal(ssh.of("wb-test-a", "exec").length, 1);
@@ -1069,7 +1068,6 @@ test("a failed upgrade attaches the older version, which reports why, and Retry 
 		endpoint: { url: `http://127.0.0.1:${port}`, token: "remote-token" },
 		...NO_SERVER,
 		installFailure: "Installing Whiteboard 0.1.6 on wb-test-a failed while installing the package: The package installed on wb-test-a reports version 0.1.5, not 0.1.6.",
-		target: "linux-arm64",
 	});
 	assert.match(ssh.of("wb-test-a", "exec")[0].input!, /command -v whiteboard/);
 	assert.equal(clock.pending, 0);

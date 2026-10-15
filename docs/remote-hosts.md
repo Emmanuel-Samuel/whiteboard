@@ -56,9 +56,11 @@ never stored.
 
 ## How Desktop installs Whiteboard
 
-Desktop first checks the host and writes nothing. If the host lacks Desktop's
-version, Desktop asks once, then installs it as your user. The host downloads
+Desktop first checks the host and writes nothing. If the host has no install
+Desktop recognises, Desktop asks once, then installs as your user. A host with
+one gets Desktop's new version without a question. The host downloads
 it from `install.dev.fast` and checks its pinned checksum before unpacking.
+Desktop runs the same `install.sh` you can run by hand.
 
 You do not need to start anything. Desktop starts the review server when it
 connects. On a remote with no Desktop, `whiteboard api` starts one too, so an
@@ -77,9 +79,10 @@ instead of `~/.dev`. The review server keeps reviews in `~/.dev`.
 
 ### Updates
 
-When Desktop updates, it installs its new version without asking. It restarts
-the review server it started. It keeps the previous version and any version
-still running. It leaves a server you started yourself running.
+When Desktop updates, it installs its new version without asking, also over an
+`install.sh` hand install. It restarts the review server it started. It keeps
+the previous version and any version still running. It leaves a server you
+started yourself running.
 
 ### The setting
 
@@ -88,7 +91,7 @@ not have its version:
 
 | Value | What Desktop does |
 |---|---|
-| `ask` (the default) | Asks once per host. |
+| `ask` (the default) | Asks once per host, unless it already has an install Desktop recognises. |
 | `always` | Installs without asking. |
 | `never` | Never installs, and uses the `whiteboard` on the host's `PATH`. |
 
@@ -97,11 +100,10 @@ not have its version:
 On the remote, with `<version>` set to Desktop's version:
 
 ```sh
-mkdir -p ~/.dev/whiteboard-remote && rm -rf ~/.dev/whiteboard-remote/whiteboard-remote && curl -fsSL https://install.dev.fast/releases/<version>/remote/whiteboard-remote-<version>-linux-x64.tar.xz | tar -xJ -C ~/.dev/whiteboard-remote
-mkdir -p ~/.local/bin && ln -sf ~/.dev/whiteboard-remote/whiteboard-remote/whiteboard ~/.local/bin/whiteboard
+curl -fsSL https://install.dev.fast/releases/<version>/remote/install.sh | sh -s -- --version <version>
 ```
 
-On ARM64, use `linux-arm64` in place of `linux-x64`.
+It installs where Desktop does, so Desktop finds it.
 
 ### Developing
 
