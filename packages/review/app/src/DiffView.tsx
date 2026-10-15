@@ -1030,7 +1030,7 @@ const styles = stylex.create({
     padding: 0,
     color: tokens.inkMuted,
     cursor: "pointer",
-    backgroundColor: { default: "transparent", ":hover": tokens.well },
+    backgroundColor: { default: tokens.transparent, ":hover": tokens.well },
     outline: { default: null, ":focus-visible": `1px solid ${tokens.accent}` },
     outlineOffset: { default: null, ":focus-visible": "-2px" },
   },
@@ -1050,7 +1050,7 @@ const styles = stylex.create({
     textAlign: "center",
     whiteSpace: "nowrap",
     cursor: "pointer",
-    backgroundColor: { default: "transparent", ":hover": tokens.well },
+    backgroundColor: { default: tokens.transparent, ":hover": tokens.well },
     outline: { default: null, ":focus-visible": `1px solid ${tokens.accent}` },
     outlineOffset: { default: null, ":focus-visible": "-2px" },
   },
@@ -1173,7 +1173,7 @@ const styles = stylex.create({
     font: "inherit",
     color: "inherit",
     cursor: "pointer",
-    backgroundColor: { default: "transparent", ":hover": tokens.well },
+    backgroundColor: { default: tokens.transparent, ":hover": tokens.well },
     outline: { default: null, ":focus-visible": `1px solid ${tokens.accent}` },
     outlineOffset: { default: null, ":focus-visible": "-2px" },
   },
@@ -1181,12 +1181,12 @@ const styles = stylex.create({
   toggleEmpty: {
     color: tokens.inkFaint,
     cursor: "default",
-    backgroundColor: "transparent",
+    backgroundColor: tokens.transparent,
   },
   toggleActive: {
     color: tokens.ink,
     fontWeight: fontWeight.semibold,
-    backgroundColor: "transparent",
+    backgroundColor: tokens.transparent,
   },
   // The filter outranks the viewed fade; the checkbox beside it says viewed.
   faded: {

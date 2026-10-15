@@ -426,7 +426,7 @@ const styles = stylex.create({
     borderStyle: "none",
     borderColor: "currentcolor",
     borderRadius: { default: null, ":focus-visible": radius.surface },
-    backgroundColor: "transparent",
+    backgroundColor: tokens.transparent,
     backgroundImage: "none",
     color: "inherit",
     cursor: "pointer",

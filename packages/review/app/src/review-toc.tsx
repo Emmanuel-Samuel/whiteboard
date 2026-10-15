@@ -1,5 +1,4 @@
-import { tocLayer } from "@canvas/review-toc.stylex";
-import { fontSize, fontWeight, motion } from "@canvas/scale.stylex";
+import { fontSize, fontWeight, layer, motion } from "@canvas/scale.stylex";
 import { IconButton } from "@canvas/ui/button";
 import { surfaceStyles } from "@canvas/ui/surface";
 import { textStyles } from "@canvas/ui/text";
@@ -430,7 +429,7 @@ const styles = stylex.create({
     // Sits 16px above the content top so it clears the page title.
     top: `calc(32px + ${tokens.reviewPageTop})`,
     left: { default: "24px", [stylex.env.narrow]: "8px" },
-    zIndex: tocLayer.card,
+    zIndex: layer.toc,
     display: "block",
     flex: "none",
     width: "32px",
@@ -466,7 +465,7 @@ const styles = stylex.create({
     flexDirection: "column",
     pointerEvents: "none",
     left: { default: "24px", [stylex.env.narrow]: "8px" },
-    zIndex: tocLayer.rail,
+    zIndex: layer.tocRail,
     width: {
       default: "248px",
       [stylex.env.narrow]: "min(248px, calc(100cqi - 16px))",
