@@ -32,6 +32,19 @@ export function TextArea({
   );
 }
 
+export function Select({
+  className,
+  xstyle,
+  ...props
+}: Styled<ComponentProps<"select">>) {
+  return (
+    <select
+      {...props}
+      {...withClass(className, fieldStyles.box, fieldStyles.select, xstyle)}
+    />
+  );
+}
+
 // Exported for a shell around an input and its buttons or icon.
 export const fieldStyles = stylex.create({
   box: {
@@ -75,5 +88,16 @@ export const fieldStyles = stylex.create({
     padding: "6px 8px",
     lineHeight: 1.5,
     resize: "vertical",
+  },
+  select: {
+    paddingRight: "26px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    appearance: "none",
+    backgroundImage: tokens.chevronDown,
+    backgroundPosition: "right 8px center",
+    backgroundSize: "12px 12px",
+    backgroundRepeat: "no-repeat",
+    cursor: "pointer",
   },
 });
