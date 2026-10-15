@@ -576,7 +576,7 @@ const styles = stylex.create({
   headline: {
     margin: 0,
     color: tokens.ink,
-    font: `${fontWeight.medium} ${welcomeType.headline}/46px ${tokens.fontSerif}`,
+    font: `${fontWeight.medium} ${welcomeType.headline}/${welcomeType.headlineLeading} ${tokens.fontSerif}`,
   },
   sub: {
     margin: 0,

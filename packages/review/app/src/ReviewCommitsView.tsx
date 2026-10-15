@@ -419,7 +419,8 @@ const styles = stylex.create({
   meta: {
     font: `${fontSize.small} ${tokens.fontMono}`,
     fontVariantNumeric: "tabular-nums",
-    paddingLeft: "26px",
+    // Lines up with the subject, past the 16px chevron and the toggle's gap.
+    paddingLeft: `calc(16px + ${space.s10})`,
     color: tokens.inkMuted,
   },
   files: {
@@ -449,7 +450,8 @@ const styles = stylex.create({
     flex: 1,
   },
   filesFooter: {
-    padding: `${space.s6} ${space.s12} ${space.s4} 38px`,
+    // Lines up with the paths, past a file's padding, 16px mark and gap.
+    padding: `${space.s6} ${space.s12} ${space.s4} calc(${space.s12} + 16px + ${space.s10})`,
     fontSize: fontSize.micro,
   },
   // The whole header is the toggle's hit area, so its chevron stays quiet on
