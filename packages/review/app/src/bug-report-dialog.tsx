@@ -1,4 +1,5 @@
 import { Button, IconButton } from "@canvas/ui/button";
+import { Checkbox } from "@canvas/ui/checkbox";
 import { iconStyles } from "@canvas/ui/icon-styles";
 import { BugIcon, CloseIcon } from "@canvas/ui/icons";
 import { surfaceStyles } from "@canvas/ui/surface";
@@ -269,8 +270,7 @@ export function BugReportControl({
                   Include diagnostic attachments
                 </legend>
                 <label {...stylex.props(styles.small, styles.option)}>
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={includeContext}
                     onChange={(event) =>
                       setIncludeContext(event.target.checked)
@@ -279,8 +279,7 @@ export function BugReportControl({
                   Session
                 </label>
                 <label {...stylex.props(styles.small, styles.option)}>
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={includeDiff}
                     onChange={(event) => setIncludeDiff(event.target.checked)}
                   />
