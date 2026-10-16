@@ -286,6 +286,7 @@ function ReviewLayoutContent({
   // The scratchpad is a document and nothing else: no source tree to browse,
   // nothing to share, nothing to dismiss.
   const scratchpad = session.review?.kind === "scratchpad";
+  const web = session.bridge.config.host === "web";
   const available = session.review?.available;
   // A remote review keeps Source tree, disabled with the reason.
   const sourceWindows = available?.sourceWindows !== false;
@@ -670,37 +671,40 @@ function ReviewLayoutContent({
             <ReviewStackSelector />
             <AskHistoryControl />
             <ShareControl />
-            <IconButton
-              xstyle={shellStyles.topbarItem}
-              ref={discordTooltip}
-              aria-label="Join our Discord community"
-              onClick={() => {
-                captureUiEvent(session, "discord_clicked", {
-                  via: "topbar",
-                });
-                session.surface.post({ name: "joinDiscord", args: {} });
-              }}
-            >
-              <DiscordIcon xstyle={controlStyles.chromeIcon} />
-            </IconButton>
-            <BugReportControl />
+            {!web && (
+              <>
+                <IconButton
+                  xstyle={shellStyles.topbarItem}
+                  ref={discordTooltip}
+                  aria-label="Join our Discord community"
+                  onClick={() => {
+                    captureUiEvent(session, "discord_clicked", {
+                      via: "topbar",
+                    });
+                    session.surface.post({ name: "joinDiscord", args: {} });
+                  }}
+                >
+                  <DiscordIcon xstyle={controlStyles.chromeIcon} />
+                </IconButton>
+                <BugReportControl />
+              </>
+            )}
             <ReviewBatonChip outcome={review.submissionOutcome} />
             <DiffLayoutControl />
             {!scratchpad &&
+              !web &&
               !review.historicalRevision &&
               !review.submissionOutcome && (
-                <div
-                  {...stylex.props(
-                    shellStyles.topbarItem,
-                    shellStyles.actionsDivider,
-                  )}
-                />
+                <>
+                  <div
+                    {...stylex.props(
+                      shellStyles.topbarItem,
+                      shellStyles.actionsDivider,
+                    )}
+                  />
+                  <ReviewCornerAction />
+                </>
               )}
-            {!scratchpad &&
-            !review.historicalRevision &&
-            !review.submissionOutcome ? (
-              <ReviewCornerAction />
-            ) : null}
           </div>
         </header>
         {banner}

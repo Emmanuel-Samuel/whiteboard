@@ -59,6 +59,7 @@ export function mountSharedReview(
     {
       kind: "api",
       reviewId: bridge.config.reviewId,
+      available: { sourceWindows: false },
       bridge,
     },
     ui ?? webCanvasUi(),

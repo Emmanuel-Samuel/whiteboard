@@ -138,6 +138,22 @@ it("renders a shared review from its bundle", async () => {
       container.querySelector('[aria-label="Shared by octocat"]'),
     ),
   ).not.toBeNull();
+
+  for (const text of ["Dismiss", "Move to Trash", "Source tree"])
+    expect(container.textContent).not.toContain(text);
+
+  for (const label of [
+    "Join our Discord community",
+    "Report a bug",
+    "Share review",
+  ])
+    expect(container.querySelector(`[aria-label="${label}"]`)).toBeNull();
+
+  expect(
+    container.querySelector(
+      '[aria-label="Session views"] button[aria-label="Trace"]',
+    ),
+  ).toBeNull();
 });
 
 it("renders a markdown-only shared review without pins", async () => {
