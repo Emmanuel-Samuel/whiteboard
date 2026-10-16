@@ -43,6 +43,7 @@ __pycache__/
 packages/code-graph/canvas/public/snapshot*.json
 .dev/code-graphs/
 .dev/software-maps/
+packages/review/app/src/web/structural/engine/*.wasm.gz
 
 # Local agent/context files
 /tasks/

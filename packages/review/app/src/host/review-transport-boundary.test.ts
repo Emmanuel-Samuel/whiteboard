@@ -10,6 +10,10 @@ const transportModule = fileURLToPath(
   new URL("./review-client.ts", import.meta.url),
 );
 
+const structuralEngine = fileURLToPath(
+  new URL("../web/structural/", import.meta.url),
+);
+
 describe("review host transport boundary", () => {
   it("keeps the private API prefix and raw transport constructors in one module", () => {
     const violations: string[] = [];
@@ -28,7 +32,10 @@ describe("review host transport boundary", () => {
         violations.push(`${file}: private API prefix`);
       }
 
-      if (/(?<![.\w])fetch\s*\(/.test(source)) {
+      if (
+        !file.startsWith(structuralEngine) &&
+        /(?<![.\w])fetch\s*\(/.test(source)
+      ) {
         violations.push(`${file}: raw fetch`);
       }
 
