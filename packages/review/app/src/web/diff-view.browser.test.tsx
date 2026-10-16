@@ -115,14 +115,6 @@ it("renders the diff of each file from both texts", async () => {
   expect(tree.textContent).toContain("src/a.ts");
   expect(tree.textContent).toContain("+1");
   expect(() => view.revealFile?.("src/a.ts")).not.toThrow();
-  expect(
-    view.sourceOffset?.({
-      side: "head",
-      file: "src/a.ts",
-      fromLine: 1,
-      toLine: 1,
-    }),
-  ).toBeTypeOf("number");
   expect(errors).toEqual([]);
 });
 

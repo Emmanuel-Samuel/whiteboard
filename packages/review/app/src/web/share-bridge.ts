@@ -1,9 +1,11 @@
 import type {
   ReviewCanvasBridge,
   ReviewDiffLayout,
+  ReviewDiffLayoutScope,
   ReviewDiffViewFactory,
   ReviewDisposable,
   ReviewInlineEditorFactory,
+  ReviewStreamLine,
 } from "@dev.fast/review-protocol";
 import type { Snapshot } from "@review/review-api/store";
 import type { SharedReview } from "@review/sharing/read";
@@ -20,7 +22,13 @@ export interface ShareBridgeOptions {
   diffView: ReviewDiffViewFactory;
 }
 
-const diffLayoutKey = "review-web:diff-layout";
+const layoutKey = (scope: ReviewDiffLayoutScope) =>
+  `review-web:${scope}-layout`;
+
+const defaultLayouts: Record<ReviewDiffLayoutScope, ReviewDiffLayout> = {
+  diff: "split",
+  peek: "unified",
+};
 
 /** Shared reviews are served under `shared-<id>`, like the desktop's imported shares. */
 export function sharedReviewId(review: SharedReview) {
@@ -50,7 +58,12 @@ export function createShareBridge(
   const encoder = new TextEncoder();
   let theme = options.theme;
   const themeListeners = new Set<(theme: Theme) => void>();
-  const layoutListeners = new Set<(layout: ReviewDiffLayout) => void>();
+
+  const layoutListeners: Record<
+    ReviewDiffLayoutScope,
+    Set<(layout: ReviewDiffLayout) => void>
+  > = { diff: new Set(), peek: new Set() };
+
   let progress: ReturnType<typeof shareProgress> | undefined;
 
   const themeSubscription = options.onDidChangeTheme?.((next) => {
@@ -82,14 +95,15 @@ export function createShareBridge(
           start(controller) {
             controller.enqueue(
               encoder.encode(
-                JSON.stringify([
-                  {
-                    value: {
-                      ...servedSnapshot(review),
-                      activity: { workingCount: 0, expiresAt: null },
-                    },
+                JSON.stringify({
+                  kind: "review",
+                  reviewId: id,
+                  value: {
+                    ...servedSnapshot(review),
+                    activity: { workingCount: 0, expiresAt: null },
+                    coverageRevision: 0,
                   },
-                ]) + "\n",
+                } satisfies ReviewStreamLine<Snapshot>) + "\n",
               ),
             );
           },
@@ -190,28 +204,30 @@ export function createShareBridge(
     subscribe: () => ({ dispose() {} }),
     currentTheme: () => theme,
     onDidChangeTheme: (listener) => listen(themeListeners, listener),
-    currentDiffLayout() {
+    currentDiffLayout(scope) {
       try {
-        return globalThis.localStorage?.getItem(diffLayoutKey) === "unified"
-          ? "unified"
-          : "split";
-      } catch {
-        return "split";
-      }
-    },
-    async setDiffLayout(layout) {
-      try {
-        globalThis.localStorage?.setItem(diffLayoutKey, layout);
+        const stored = globalThis.localStorage?.getItem(layoutKey(scope));
+
+        if (stored === "split" || stored === "unified") return stored;
       } catch {}
 
-      for (const listener of layoutListeners) listener(layout);
+      return defaultLayouts[scope];
     },
-    onDidChangeDiffLayout: (listener) => listen(layoutListeners, listener),
+    async setDiffLayout(scope, layout) {
+      try {
+        globalThis.localStorage?.setItem(layoutKey(scope), layout);
+      } catch {}
+
+      for (const listener of layoutListeners[scope]) listener(layout);
+    },
+    onDidChangeDiffLayout: (scope, listener) =>
+      listen(layoutListeners[scope], listener),
     ready() {},
     dispose() {
       themeSubscription?.dispose();
       themeListeners.clear();
-      layoutListeners.clear();
+      layoutListeners.diff.clear();
+      layoutListeners.peek.clear();
     },
   };
 }

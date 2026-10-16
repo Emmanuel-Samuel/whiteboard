@@ -123,7 +123,7 @@ it("serves the snapshot under a shared- id with target and shared", async () => 
   });
 });
 
-it("answers the watch stream with one Result[] line and stays open", async () => {
+it("answers the watch stream with one review line and stays open", async () => {
   const response = await bridge.request(
     `${base}/watch?subscriptions=${encodeURIComponent(JSON.stringify([{ reviewId: id }]))}`,
   );
@@ -133,9 +133,11 @@ it("answers the watch stream with one Result[] line and stays open", async () =>
     .getReader();
 
   const { value } = await reader.read();
-  const [result] = JSON.parse(value!.trim());
-  expect(result.value.reviewId).toBe(id);
-  expect(result.value.activity).toEqual({ workingCount: 0, expiresAt: null });
+  const line = JSON.parse(value!.trim());
+  expect(line.kind).toBe("review");
+  expect(line.reviewId).toBe(id);
+  expect(line.value.reviewId).toBe(id);
+  expect(line.value.activity).toEqual({ workingCount: 0, expiresAt: null });
 
   const second = Promise.race([
     reader.read().then(() => "closed"),

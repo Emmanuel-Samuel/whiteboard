@@ -228,29 +228,10 @@ export function createWebDiffView(
         setProgress() {},
         revealFile,
         revealSource: (source) => revealFile(source.file),
-        sourceOffset(source) {
-          const element = section(source.file);
-
-          return element
-            ? element.getBoundingClientRect().top -
-                scroller.getBoundingClientRect().top
-            : undefined;
-        },
         onDidError(listener) {
           errorListeners.add(listener);
 
           return { dispose: () => errorListeners.delete(listener) };
-        },
-        onDidScroll(listener) {
-          const onScroll = () => listener({ height: scroller.clientHeight });
-          scroller.addEventListener("scroll", onScroll);
-
-          const dispose = () =>
-            scroller.removeEventListener("scroll", onScroll);
-
-          disposables.push(dispose);
-
-          return { dispose };
         },
         dispose() {
           if (disposed) return;

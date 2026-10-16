@@ -100,7 +100,10 @@ export function fixtureReviewBridge(api: FixtureReviewApi): ReviewCanvasBridge {
       request,
       // A code peek asks the host for an inline editor; a placeholder proves it did.
       inlineEditors: placeholderInlineEditors(),
-      diffView: { ...placeholderDiffView(), files: async () => api.files ?? [] },
+      diffView: {
+        ...placeholderDiffView(),
+        files: async () => api.files ?? [],
+      },
     },
   );
 }

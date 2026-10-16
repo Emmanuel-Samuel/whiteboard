@@ -48,15 +48,19 @@ export function mountSharedReview(
     inlineEditors: createWebInlineEditors(review, theme),
     diffView: createWebDiffView(
       review,
-      () => bridge.currentDiffLayout(),
-      (listener) => bridge.onDidChangeDiffLayout(listener),
+      () => bridge.currentDiffLayout("diff"),
+      (listener) => bridge.onDidChangeDiffLayout("diff", listener),
       theme,
     ),
   });
 
   const handle = mountReviewCanvas(
     container,
-    { kind: "api", reviewId: bridge.config.reviewId, bridge },
+    {
+      kind: "api",
+      reviewId: bridge.config.reviewId,
+      bridge,
+    },
     ui ?? webCanvasUi(),
   );
 

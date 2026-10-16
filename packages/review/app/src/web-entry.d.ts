@@ -17,7 +17,7 @@ export interface ReviewMenuRequest {
 }
 
 export interface ReviewCanvasUi {
-  confirmDelete?(title: string): Promise<boolean>;
+  confirmDelete?(titles: readonly string[]): Promise<boolean>;
   showMenu(request: ReviewMenuRequest): { dispose(): void };
 }
 

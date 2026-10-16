@@ -163,7 +163,7 @@ it("renders a markdown-only shared review without pins", async () => {
   expect(container.textContent).not.toMatch(/Connection lost|Diff/);
 });
 
-it("shows a code peek and the Diff tab in both layouts through the default menu", async () => {
+it("shows a code peek and the Diff tab in both layouts through Diff settings", async () => {
   localStorage.removeItem("review-web:diff-layout");
   const { container } = await mount(await peekAndDiffBundle());
 
@@ -196,17 +196,19 @@ it("shows a code peek and the Diff tab in both layouts through the default menu"
 
   await act(async () => settings.click());
 
-  const menu = await settled(() =>
-    container.querySelector<HTMLElement>('[role="menu"]'),
-  );
+  const dialog = () =>
+    container.querySelector('[role="dialog"][aria-label="Diff settings"]');
+
+  expect(await settled(dialog)).not.toBeNull();
 
   const unified = [
-    ...menu!.querySelectorAll<HTMLElement>('[role^="menuitem"]'),
-  ].find((item) => item.textContent?.includes("Unified"));
+    ...container.querySelectorAll<HTMLElement>(
+      '[aria-label="Diff layout"] button',
+    ),
+  ].find((item) => item.textContent === "Unified");
 
   await act(async () => unified!.click());
 
-  expect(container.querySelector('[role="menu"]')).toBeNull();
   expect(await diffShown(container, "single")).toBe(true);
   expect(container.querySelector("[data-block-error]")).toBeNull();
   expect(container.querySelector('[role="alert"]')).toBeNull();
@@ -215,16 +217,12 @@ it("shows a code peek and the Diff tab in both layouts through the default menu"
     path: "__screenshots__/peek-and-diff/diff-unified.png",
   });
 
-  await act(async () => settings.click());
-  expect(
-    await settled(() => container.querySelector('[role="menu"]')),
-  ).not.toBeNull();
   await act(async () =>
-    document.activeElement!.dispatchEvent(
+    document.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
     ),
   );
-  expect(container.querySelector('[role="menu"]')).toBeNull();
+  expect(dialog()).toBeNull();
 }, 30_000);
 
 it("switches a shared review to the light theme without errors", async () => {
