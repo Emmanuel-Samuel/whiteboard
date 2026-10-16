@@ -18,6 +18,7 @@ export interface StructuralEngine {
     lhs: StructuralSide | undefined,
     rhs: StructuralSide | undefined,
   ): Promise<Diffed>;
+  workers(): number;
   dispose(): void;
 }
 
@@ -58,23 +59,38 @@ export function createStructuralEngine({
   engineUrl,
   workerUrl,
   workers = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 2)),
+  idleMs = 10_000,
 }: {
   engineUrl: string;
   workerUrl?: string | URL;
   workers?: number;
+  idleMs?: number;
 }): StructuralEngine {
   const pending = new Map<number, Call>();
   const slots: Slot[] = [];
   let module: Promise<WebAssembly.Module> | undefined;
+  let failure: Error | undefined;
+  let idle: ReturnType<typeof setTimeout> | undefined;
   let next = 0;
   let disposed = false;
 
-  const fail = (error: Error, slot?: Slot) => {
-    for (const [id, call] of pending)
-      if (!slot || call.slot === slot) {
-        pending.delete(id);
-        call.reject(error);
-      }
+  const settle = (id: number) => {
+    const call = pending.get(id);
+
+    if (!call) return undefined;
+    pending.delete(id);
+    call.slot.busy--;
+
+    if (call.slot.retire && !call.slot.busy) drop(call.slot);
+
+    if (!pending.size) {
+      clearTimeout(idle);
+      idle = setTimeout(() => {
+        for (const slot of [...slots]) if (!slot.busy) drop(slot);
+      }, idleMs);
+    }
+
+    return call;
   };
 
   const drop = (slot: Slot) => {
@@ -99,25 +115,21 @@ export function createStructuralEngine({
       () => {},
     );
     worker.onmessage = ({ data }: MessageEvent<WorkerResponse>) => {
-      slot.busy--;
-
       if ("error" in data || data.memory > MEMORY_LIMIT) slot.retire = true;
+      const call = settle(data.id);
 
-      if (slot.retire && !slot.busy) drop(slot);
-
-      const call = pending.get(data.id);
-      pending.delete(data.id);
-
-      if (!call) return;
-
-      if ("error" in data) call.reject(new Error(data.error));
-      else call.resolve(data);
+      if ("error" in data) call?.reject(new Error(data.error));
+      else call?.resolve(data);
     };
 
     worker.onerror = (event) => {
       event.preventDefault();
+      slot.retire = true;
+      const error = new Error(event.message || "The diffr worker failed.");
+
+      for (const [id, call] of pending)
+        if (call.slot === slot) settle(id)?.reject(error);
       drop(slot);
-      fail(new Error(event.message || "The diffr worker failed."), slot);
     };
 
     return slot;
@@ -126,12 +138,12 @@ export function createStructuralEngine({
   const pick = () => {
     const open = slots.filter((slot) => !slot.retire);
 
-    const idle = open.reduce<Slot | undefined>(
+    const least = open.reduce<Slot | undefined>(
       (best, slot) => (!best || slot.busy < best.busy ? slot : best),
       undefined,
     );
 
-    if (idle && (idle.busy < 2 || slots.length >= workers)) return idle;
+    if (least && (least.busy < 2 || open.length >= workers)) return least;
     const slot = spawn();
     slots.push(slot);
 
@@ -139,9 +151,13 @@ export function createStructuralEngine({
   };
 
   return {
+    workers: () => slots.length,
     diff(status, lhs, rhs) {
       if (disposed)
         return Promise.reject(new Error("The diffr engine was disposed."));
+
+      if (failure) return Promise.reject(failure);
+      clearTimeout(idle);
       module ??= compile(engineUrl);
       const id = next++;
       const slot = pick();
@@ -154,14 +170,25 @@ export function createStructuralEngine({
 
       return new Promise<Diffed>((resolve, reject) => {
         pending.set(id, { slot, resolve, reject });
-        module!.then(() => slot.worker.postMessage(request), fail);
+        module!.then(
+          () => slot.worker.postMessage(request),
+          (error: Error) => {
+            failure = error;
+            settle(id)?.reject(error);
+            drop(slot);
+          },
+        );
       });
     },
     dispose() {
       disposed = true;
+      clearTimeout(idle);
 
       for (const slot of [...slots]) drop(slot);
-      fail(new Error("The diffr engine was disposed."));
+      const error = new Error("The diffr engine was disposed.");
+
+      for (const call of pending.values()) call.reject(error);
+      pending.clear();
     },
   };
 }

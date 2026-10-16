@@ -1,10 +1,10 @@
-import { type Syntax, lineSpans } from "./syntax";
 // Vendored from diffr (MIT) web/src/tokens.ts at 62575763d.
 /**
  * Syntax colour for diffr's tree-sitter captures, in Pierre's palette (pierre-dark-soft and
  * pierre-light, from @pierre/theme): each capture becomes a class that sets the
  * `--diffs-token-dark` / `--diffs-token-light` pair the diffs stylesheet paints line spans with.
  */
+import { type Syntax, lineSpans } from "./syntax";
 import type { Span } from "./wire";
 
 /** [dark, light] per token kind. */

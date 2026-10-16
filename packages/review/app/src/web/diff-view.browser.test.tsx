@@ -9,6 +9,7 @@ import { act } from "react";
 import { afterEach, expect, it } from "vitest";
 
 import { createWebDiffView } from "./diff-view";
+import { fakeEngineUrl, malformedWorkerUrl } from "./structural/test-engine";
 import { shadowText } from "./test-shadow-text";
 import { testTheme } from "./test-theme";
 
@@ -338,6 +339,28 @@ it("keeps the textual diff when the engine cannot load", async () => {
 
   await settled(() => rendered(container).includes("const added = 2;"));
   await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(structuralSection(container)).toBeNull();
+  expect(rendered(container)).toContain("const added = 2;");
+});
+
+it("keeps the textual diff when diffr's result cannot be drawn", async () => {
+  const factory = createWebDiffView(
+    review([modified]),
+    () => "split",
+    noLayoutChanges,
+    testTheme().theme,
+    {
+      structural: {
+        engineUrl: fakeEngineUrl(),
+        workerUrl: malformedWorkerUrl(),
+      },
+    },
+  );
+
+  const { container } = mount(({ container }) => factory.create({ container }));
+
+  await settled(() => rendered(container).includes("const added = 2;"));
+  await new Promise((resolve) => setTimeout(resolve, 300));
   expect(structuralSection(container)).toBeNull();
   expect(rendered(container)).toContain("const added = 2;");
 });

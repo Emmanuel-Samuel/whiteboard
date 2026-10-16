@@ -1,6 +1,11 @@
 import { afterEach, expect, it } from "vitest";
 
 import { type StructuralEngine, createStructuralEngine } from "./engine";
+import {
+  brokenEngineUrl,
+  fakeEngineUrl,
+  malformedWorkerUrl,
+} from "./test-engine";
 
 const engineUrl = new URL("./engine/diffr_web_bg.wasm.gz", import.meta.url)
   .href;
@@ -44,4 +49,42 @@ it("rejects every call when the engine cannot load", async () => {
   await expect(
     engine.diff("added", undefined, { path: "a.ts", text: "a\n" }),
   ).rejects.toThrow("failed to load");
+});
+
+it("lets idle workers go and starts one again for later work", async () => {
+  const engine = createStructuralEngine({
+    engineUrl: fakeEngineUrl(),
+    workerUrl: malformedWorkerUrl(),
+    idleMs: 20,
+  });
+
+  engines.push(engine);
+
+  await engine.diff("added", undefined, { path: "a.ts", text: "a\n" });
+  expect(engine.workers()).toBe(1);
+  await expect.poll(() => engine.workers()).toBe(0);
+
+  await engine.diff("added", undefined, { path: "a.ts", text: "a\n" });
+  expect(engine.workers()).toBe(1);
+});
+
+it("stops spawning workers once the engine fails to compile", async () => {
+  const engine = createStructuralEngine({
+    engineUrl: brokenEngineUrl(),
+    workerUrl: malformedWorkerUrl(),
+    workers: 4,
+  });
+
+  engines.push(engine);
+  const side = { path: "a.ts", text: "a\n" };
+
+  const calls = [1, 2, 3, 4, 5].map(() =>
+    engine.diff("added", undefined, side),
+  );
+
+  for (const call of calls) await expect(call).rejects.toThrow("WebAssembly");
+  await expect(engine.diff("added", undefined, side)).rejects.toThrow(
+    "WebAssembly",
+  );
+  expect(engine.workers()).toBe(0);
 });

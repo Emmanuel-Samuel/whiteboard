@@ -1,4 +1,3 @@
-import type { Lines } from "./lines";
 // Vendored from diffr (MIT) web/src/model.ts at 62575763d.
 /**
  * The rows a file paints, from diffr's per-side region trees. The zip is the TUI's (rows.ts): leaves
@@ -6,6 +5,7 @@ import type { Lines } from "./lines";
  * fold toggles. Unlike rows.ts this keeps line indices only; spans are built when a row is painted,
  * so a 50k-line file costs nothing until it scrolls into view.
  */
+import type { Lines } from "./lines";
 import {
   type Fold,
   type FoldTint,

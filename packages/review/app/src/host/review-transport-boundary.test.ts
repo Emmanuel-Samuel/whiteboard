@@ -10,8 +10,10 @@ const transportModule = fileURLToPath(
   new URL("./review-client.ts", import.meta.url),
 );
 
-const structuralEngine = fileURLToPath(
-  new URL("../web/structural/", import.meta.url),
+const engineAssetLoaders = new Set(
+  ["../web/structural/engine.ts", "../web/structural/engine/diffr_web.js"].map(
+    (path) => fileURLToPath(new URL(path, import.meta.url)),
+  ),
 );
 
 describe("review host transport boundary", () => {
@@ -33,7 +35,7 @@ describe("review host transport boundary", () => {
       }
 
       if (
-        !file.startsWith(structuralEngine) &&
+        !engineAssetLoaders.has(file) &&
         /(?<![.\w])fetch\s*\(/.test(source)
       ) {
         violations.push(`${file}: raw fetch`);

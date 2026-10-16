@@ -8,14 +8,18 @@ import { type FileDiffMetadata, parseDiffFromFile } from "@pierre/diffs";
 import { FileDiff, type FileDiffOptions } from "@pierre/diffs/react";
 import type { ShareDiffFileSummary, SharedReview } from "@review/sharing/read";
 import * as stylex from "@stylexjs/stylex";
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 
 import type { WebTheme, WebThemeName } from "./highlight";
 import type { Diffed } from "./structural/diffed";
 import { createStructuralEngine } from "./structural/engine";
-import { type StructuralFile, createStructuralView } from "./structural/render";
+import {
+  type StructuralFile,
+  type StructuralView,
+  createStructuralView,
+} from "./structural/render";
 import { diffStyles as styles } from "./web-styles";
 
 type Review = Pick<SharedReview, "diff" | "text" | "snapshot">;
@@ -28,7 +32,7 @@ interface Entry {
 }
 
 export interface WebDiffViewOptions {
-  structural?: { engineUrl: string };
+  structural?: { engineUrl: string; workerUrl?: string };
 }
 
 const fallbackLabels = new Map([
@@ -40,17 +44,30 @@ const fallbackLabels = new Map([
 
 const MAX_IN_FLIGHT = 8;
 
-type Structural = { diffed: Diffed } | { fallback: string };
+type Structural = { view: StructuralView } | { fallback: string };
 
-function outcome(diffed: Diffed): Structural | undefined {
+function outcome(
+  diffed: Diffed,
+  file: StructuralFile,
+  layout: ReviewDiffLayout,
+  theme: WebThemeName,
+): Structural | undefined {
   const { event } = diffed;
 
   if (event.error || event.diff?.type !== "text") return undefined;
   const fallback = event.diff.stats.fallback;
 
-  return fallback
-    ? { fallback: fallbackLabels.get(fallback.code) ?? "Line diff" }
-    : { diffed };
+  if (fallback)
+    return { fallback: fallbackLabels.get(fallback.code) ?? "Line diff" };
+
+  try {
+    const view = createStructuralView(diffed, file);
+    view.render(layout, theme);
+
+    return { view };
+  } catch {
+    return undefined;
+  }
 }
 
 function entries(review: Review, files: ShareDiffFileSummary[]) {
@@ -99,22 +116,15 @@ function entries(review: Review, files: ShareDiffFileSummary[]) {
 }
 
 function StructuralDiff({
-  diffed,
-  file,
+  view,
   layout,
   theme,
 }: {
-  diffed: Diffed;
-  file: StructuralFile;
+  view: StructuralView;
   layout: ReviewDiffLayout;
   theme: WebThemeName;
 }) {
   const host = useRef<HTMLDivElement>(null);
-
-  const view = useMemo(
-    () => createStructuralView(diffed, file),
-    [diffed, file],
-  );
 
   useLayoutEffect(() => host.current?.replaceChildren(view.element), [view]);
   useLayoutEffect(() => view.render(layout, theme), [view, layout, theme]);
@@ -147,7 +157,7 @@ function DiffFiles({
     <>
       {shown.map(({ file, diff }) => {
         const result = structural.get(file.path);
-        const diffed = result && "diffed" in result ? result.diffed : undefined;
+        const view = result && "view" in result ? result.view : undefined;
 
         const fallback =
           result && "fallback" in result ? result.fallback : undefined;
@@ -156,12 +166,11 @@ function DiffFiles({
           <section
             key={file.path}
             data-diff-file={file.path}
-            data-structural={diffed ? "" : undefined}
+            data-structural={view ? "" : undefined}
           >
-            {diffed ? (
+            {view ? (
               <StructuralDiff
-                diffed={diffed}
-                file={file}
+                view={view}
                 layout={options.diffStyle === "split" ? "split" : "unified"}
                 theme={options.themeType === "light" ? "light" : "dark"}
               />
@@ -253,10 +262,9 @@ export function createWebDiffView(
       let rendered = false;
       let pending: string | undefined;
       let disposed = false;
-      const engineUrl = options.structural?.engineUrl;
 
-      const engine = engineUrl
-        ? createStructuralEngine({ engineUrl })
+      const engine = options.structural
+        ? createStructuralEngine(options.structural)
         : undefined;
 
       const structural = new Map<string, Structural>();
@@ -276,7 +284,10 @@ export function createWebDiffView(
                 : { path: file.previousPath ?? file.path, text: base },
               head === undefined ? undefined : { path: file.path, text: head },
             )
-            .then(outcome, () => undefined)
+            .then(
+              (diffed) => outcome(diffed, file, diffLayout, theme.theme()),
+              () => undefined,
+            )
             .then((result) => {
               inFlight--;
 
