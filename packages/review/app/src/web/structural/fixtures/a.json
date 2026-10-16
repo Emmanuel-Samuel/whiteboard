@@ -1,0 +1,178 @@
+{
+  "entry": {
+    "file": {
+      "lhs": {
+        "path": "src/a.ts",
+        "oid": "",
+        "mode": ""
+      },
+      "rhs": {
+        "path": "src/a.ts",
+        "oid": "",
+        "mode": ""
+      }
+    },
+    "status": "modified"
+  },
+  "event": {
+    "type": "file",
+    "file": {
+      "lhs": {
+        "path": "src/a.ts",
+        "oid": "",
+        "mode": ""
+      },
+      "rhs": {
+        "path": "src/a.ts",
+        "oid": "",
+        "mode": ""
+      }
+    },
+    "diff": {
+      "type": "text",
+      "lhs": {
+        "text": "line1\nline2\nline3\n",
+        "syntax": [
+          {
+            "line": 0,
+            "start_column": 0,
+            "end_column": 5,
+            "capture": "variable"
+          },
+          {
+            "line": 1,
+            "start_column": 0,
+            "end_column": 5,
+            "capture": "variable"
+          },
+          {
+            "line": 2,
+            "start_column": 0,
+            "end_column": 5,
+            "capture": "variable"
+          }
+        ],
+        "regions": [
+          {
+            "id": 1,
+            "fold_state_id": 1,
+            "start": {
+              "line": 0,
+              "column": 0
+            },
+            "end": {
+              "line": 3,
+              "column": 0
+            },
+            "kind": "leaf",
+            "alignment_id": 0
+          }
+        ]
+      },
+      "rhs": {
+        "text": "line1\nline2\nline3\nconst added = 2;\n",
+        "syntax": [
+          {
+            "line": 0,
+            "start_column": 0,
+            "end_column": 5,
+            "capture": "variable"
+          },
+          {
+            "line": 1,
+            "start_column": 0,
+            "end_column": 5,
+            "capture": "variable"
+          },
+          {
+            "line": 2,
+            "start_column": 0,
+            "end_column": 5,
+            "capture": "variable"
+          },
+          {
+            "line": 3,
+            "start_column": 0,
+            "end_column": 5,
+            "capture": "keyword"
+          },
+          {
+            "line": 3,
+            "start_column": 6,
+            "end_column": 11,
+            "capture": "variable"
+          },
+          {
+            "line": 3,
+            "start_column": 12,
+            "end_column": 13,
+            "capture": "operator"
+          },
+          {
+            "line": 3,
+            "start_column": 14,
+            "end_column": 15,
+            "capture": "number"
+          },
+          {
+            "line": 3,
+            "start_column": 15,
+            "end_column": 16,
+            "capture": "punctuation.delimiter"
+          }
+        ],
+        "regions": [
+          {
+            "id": 2,
+            "fold_state_id": 1,
+            "start": {
+              "line": 0,
+              "column": 0
+            },
+            "end": {
+              "line": 3,
+              "column": 0
+            },
+            "kind": "leaf",
+            "alignment_id": 0
+          },
+          {
+            "id": 3,
+            "fold_state_id": 3,
+            "start": {
+              "line": 3,
+              "column": 0
+            },
+            "end": {
+              "line": 4,
+              "column": 0
+            },
+            "kind": "leaf",
+            "alignment_id": 1,
+            "changed": [
+              {
+                "line": 3,
+                "start_column": 0,
+                "end_column": 16
+              }
+            ]
+          }
+        ]
+      },
+      "stats": {
+        "textual": {
+          "added": 1,
+          "removed": 0
+        },
+        "visible": {
+          "added": 1,
+          "removed": 0
+        }
+      },
+      "structural_changes": {
+        "base": [],
+        "head": [[3, 4]]
+      }
+    }
+  }
+}
