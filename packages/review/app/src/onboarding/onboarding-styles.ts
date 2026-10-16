@@ -1,3 +1,4 @@
+import { railStepMarker } from "@canvas/markers.stylex";
 import {
   fontSize,
   fontWeight,
@@ -62,6 +63,7 @@ export const onboardingStyles = stylex.create({
   },
   railSteps: {
     display: "flex",
+    listStyle: "none",
     flex: 1,
     justifyContent: "center",
     gap: "28px",
@@ -71,6 +73,15 @@ export const onboardingStyles = stylex.create({
     flexDirection: "column",
     gap: "8px",
     width: "120px",
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: tokens.transparent,
+    color: "inherit",
+    cursor: { default: "pointer", ":disabled": "default" },
+    font: "inherit",
+    textAlign: "start",
+    outline: { default: null, ":focus-visible": `1px solid ${tokens.accent}` },
+    outlineOffset: { default: null, ":focus-visible": "4px" },
   },
   railTrack: {
     height: "2px",
@@ -79,6 +90,7 @@ export const onboardingStyles = stylex.create({
     backgroundColor: tokens.rule,
   },
   railFill: {
+    display: "block",
     height: "100%",
     backgroundColor: tokens.accent,
     transformOrigin: "left",
@@ -90,7 +102,10 @@ export const onboardingStyles = stylex.create({
     transitionTimingFunction: onboardingMotion.enter,
   },
   railLabel: {
-    color: tokens.inkFaint,
+    color: {
+      default: tokens.inkFaint,
+      [stylex.when.ancestor(":enabled:hover", railStepMarker)]: tokens.inkMuted,
+    },
     fontFamily: tokens.fontMono,
     fontSize: fontSize.small,
   },
@@ -152,9 +167,6 @@ export const onboardingStyles = stylex.create({
     flexDirection: "column",
     gap: "10px",
     minWidth: 0,
-  },
-  titleEyebrow: {
-    paddingBottom: "4px",
   },
   heading: {
     margin: 0,
@@ -240,10 +252,10 @@ export const onboardingStyles = stylex.create({
     paddingInline: "16px 14px",
     fontSize: fontSize.ui,
   },
-  keyHint: {
-    color: tokens.inkFaint,
-    fontFamily: tokens.fontMono,
-    fontSize: fontSize.body,
+  primaryKey: {
+    borderColor: tokens.transparent,
+    backgroundColor: tokens.onAccentWash,
+    color: tokens.onAccent,
   },
   error: {
     margin: 0,

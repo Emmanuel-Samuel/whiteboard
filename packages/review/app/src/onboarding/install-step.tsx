@@ -1,11 +1,12 @@
 import { cliInstallReady } from "@canvas/cli-install-status";
-import { ArrowRightIcon, DrawnCheckIcon, PlusIcon } from "@canvas/icons";
+import { DrawnCheckIcon, PlusIcon } from "@canvas/icons";
 import { installRowMarker } from "@canvas/markers.stylex";
 import { fontSize, fontWeight, motion, radius } from "@canvas/scale.stylex";
 import { tokens } from "@canvas/tokens.stylex";
 import { Button } from "@canvas/ui/button";
 import { Checkbox } from "@canvas/ui/checkbox";
 import { CopyIcon, useCopy } from "@canvas/ui/copy";
+import { Kbd } from "@canvas/ui/kbd";
 import { useTooltip } from "@canvas/use-tooltip";
 import type {
   ReviewCanvasSetupActions,
@@ -63,11 +64,14 @@ export function InstallStep({
   client,
   setupActions,
   onProgress,
+  onConnected,
   onContinue,
 }: {
   client: OnboardingClient;
   setupActions: ReviewCanvasSetupActions;
   onProgress(fraction: number): void;
+  /** Whether any agent has Whiteboard yet. */
+  onConnected(connected: boolean): void;
   onContinue(): void;
 }) {
   const [rows, setRows] = useState<Row[]>([]);
@@ -222,13 +226,15 @@ export function InstallStep({
     [client, connectAll, setupActions],
   );
 
-  const install = async () => {
-    setApproved(true);
-
-    // First, so each agent's server launches the installed command.
+  // First, so each agent's server launches the installed command.
+  const ensureCli = async () => {
     if (rowsRef.current.find((row) => row.id === "cli")?.state !== "done")
       await installCli();
+  };
 
+  const install = async () => {
+    setApproved(true);
+    await ensureCli();
     await connectAll(
       rowsRef.current.flatMap((row) =>
         row.id !== "cli" &&
@@ -258,20 +264,28 @@ export function InstallStep({
     onProgress(rows.length ? settled / rows.length : 0);
   }, [onProgress, rows.length, settled]);
 
+  const connected = rows.some(
+    (row) => row.id !== "cli" && row.state === "done",
+  );
+
+  useEffect(() => onConnected(connected), [onConnected, connected]);
+
   // With everything already there, nothing waits on the reader's say-so.
   const nothingToDo =
     !scanning && rows.length > 0 && rows.every((row) => row.state === "done");
 
-  const ready = approved || nothingToDo;
+  // Every agent needs the command, so nothing continues without it.
+  const ready =
+    nothingToDo ||
+    (approved && rows.some((row) => row.id === "cli" && row.state === "done"));
 
   useReturnKey(!busy, ready ? onContinue : () => void install());
 
   return (
     <div {...stylex.props(onboardingStyles.sheet)}>
       <ScreenHeader
-        eyebrow="Step 2 of 3 · Install"
         heading="Install Whiteboard."
-        lead="Choose the agents to add it to."
+        lead="Check off the agents you want Whiteboard added to."
       >
         <Button
           variant="primary"
@@ -281,11 +295,8 @@ export function InstallStep({
           onClick={ready ? onContinue : () => void install()}
         >
           {ready ? "Continue" : "Install"}
-          <ArrowRightIcon />
+          <Kbd xstyle={onboardingStyles.primaryKey}>↵</Kbd>
         </Button>
-        {busy ? null : (
-          <span {...stylex.props(onboardingStyles.keyHint)}>↵ Return</span>
-        )}
       </ScreenHeader>
       <div {...stylex.props(onboardingStyles.panel, styles.list)}>
         {rows.map((row) => {
@@ -296,11 +307,13 @@ export function InstallStep({
               key={id}
               row={row}
               manual={id === "cli" ? undefined : manual?.plugins[id].command}
-              choosing={!approved && id !== "cli" && row.state === "waiting"}
+              choosing={!approved && row.state === "waiting"}
               skipped={skipped.has(id)}
               onToggle={() => toggle(id)}
               onRetry={
-                id === "cli" ? () => void installCli() : () => void connect(id)
+                id === "cli"
+                  ? () => void installCli()
+                  : () => void ensureCli().then(() => connect(id))
               }
             />
           );
@@ -413,6 +426,11 @@ function InstallRow({
   const checkboxId = useId();
   const retryTooltip = useTooltip(row.output || "Try again");
   const left = skipped && row.state === "waiting";
+  const required = row.id === "cli";
+
+  const requiredTooltip = useTooltip<HTMLSpanElement>(
+    "Every agent needs the whiteboard command",
+  );
 
   return (
     <div
@@ -423,9 +441,17 @@ function InstallRow({
       )}
       data-state={row.state}
     >
-      <span {...stylex.props(styles.status)}>
+      <span
+        ref={choosing && required ? requiredTooltip : undefined}
+        {...stylex.props(styles.status)}
+      >
         {choosing ? (
-          <Checkbox id={checkboxId} checked={!skipped} onChange={onToggle} />
+          <Checkbox
+            id={checkboxId}
+            checked={required || !skipped}
+            disabled={required}
+            onChange={onToggle}
+          />
         ) : (
           <RowStatus state={row.state} />
         )}
@@ -437,7 +463,7 @@ function InstallRow({
             styles.name,
             (left || (row.state === "waiting" && !choosing)) &&
               styles.nameWaiting,
-            choosing && styles.nameChoosing,
+            choosing && !required && styles.nameChoosing,
           )}
         >
           {row.name}
@@ -479,9 +505,11 @@ function InstallRow({
                 : "Connected"
               : row.state === "running"
                 ? "Installing…"
-                : left
-                  ? "Skipped"
-                  : "Waiting"}
+                : required
+                  ? "Required"
+                  : left
+                    ? "Skipped"
+                    : "Waiting"}
           </span>
         )}
       </span>
