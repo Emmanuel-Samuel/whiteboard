@@ -113,3 +113,14 @@ description:
 
 If your change adds or changes telemetry, update
 [docs/telemetry.md](docs/telemetry.md) in the same pull request.
+
+## Telemetry
+
+Run `DEV_FAST_REVIEW_TELEMETRY_DEBUG=1 whiteboard app launch` to print each
+event to stderr instead of sending it. Tests disable telemetry
+(`VITEST=1`, `NODE_ENV=test`); harnesses set `DEV_FAST_REVIEW_TELEMETRY_ENV` to
+`e2e` or `smoke`.
+
+Events and their allowed properties live in
+`packages/review/src/ui-telemetry-events.ts` and
+`packages/review/src/review-telemetry.ts`.
