@@ -124,6 +124,18 @@ export const diffStyles = stylex.create({
     flexShrink: 0,
     color: tokens.inkFaint,
   },
+  fallbackTag: {
+    flexShrink: 0,
+    paddingInline: "6px",
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: tokens.warningOutline,
+    borderRadius: radius.pill,
+    backgroundColor: tokens.warningWash,
+    color: tokens.ink,
+    fontFamily: tokens.chromeFont,
+    fontSize: fontSize.small,
+  },
 });
 
 export const menuStyles = stylex.create({

@@ -287,3 +287,57 @@ it("lists files missing from the share as rows, not links", async () => {
     [...tree.querySelectorAll("button")].map((button) => button.textContent),
   ).toEqual([expect.stringContaining("src/a.ts")]);
 });
+
+const engineUrl = new URL(
+  "./structural/engine/diffr_web_bg.wasm.gz",
+  import.meta.url,
+).href;
+
+function structuralSection(container: HTMLElement) {
+  return container.querySelector<HTMLElement>(
+    '[data-diff-file="src/a.ts"][data-structural]',
+  );
+}
+
+it("replaces a file's textual diff with diffr's structural one", async ({
+  skip,
+}) => {
+  if (!(await fetch(engineUrl, { method: "HEAD" })).ok)
+    skip("The diffr engine is not built into web/structural/engine.");
+
+  const factory = createWebDiffView(
+    review([modified]),
+    () => "split",
+    noLayoutChanges,
+    testTheme().theme,
+    { structural: { engineUrl } },
+  );
+
+  const { container } = mount(({ container }) => factory.create({ container }));
+
+  const section = await settled(() => structuralSection(container));
+
+  expect(section && shadowText(section)).toContain("const added = 2;");
+  expect(diffTypes(container)).toEqual(["split"]);
+});
+
+it("keeps the textual diff when the engine cannot load", async () => {
+  const factory = createWebDiffView(
+    review([modified]),
+    () => "unified",
+    noLayoutChanges,
+    testTheme().theme,
+    {
+      structural: {
+        engineUrl: new URL("./missing.wasm", import.meta.url).href,
+      },
+    },
+  );
+
+  const { container } = mount(({ container }) => factory.create({ container }));
+
+  await settled(() => rendered(container).includes("const added = 2;"));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(structuralSection(container)).toBeNull();
+  expect(rendered(container)).toContain("const added = 2;");
+});

@@ -28,6 +28,7 @@ export interface MountSharedReviewOptions {
     listener: (theme: "dark" | "light") => void,
   ) => ReviewDisposable;
   ui?: ReviewCanvasUi;
+  structural?: { engineUrl: string };
 }
 
 export function mountSharedReview(
@@ -35,7 +36,7 @@ export function mountSharedReview(
   bundle: ShareBundle,
   options: MountSharedReviewOptions,
 ): ReviewCanvasHandle {
-  const { ui, ...bridgeOptions } = options;
+  const { ui, structural, ...bridgeOptions } = options;
   const review = readSharedReview(bundle);
 
   const theme: WebTheme = {
@@ -51,6 +52,7 @@ export function mountSharedReview(
       () => bridge.currentDiffLayout("diff"),
       (listener) => bridge.onDidChangeDiffLayout("diff", listener),
       theme,
+      { structural },
     ),
   });
 

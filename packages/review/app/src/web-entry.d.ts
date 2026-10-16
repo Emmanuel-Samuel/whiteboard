@@ -28,6 +28,7 @@ export interface MountSharedReviewOptions {
     dispose(): void;
   };
   ui?: ReviewCanvasUi;
+  structural?: { engineUrl: string };
 }
 
 export interface ReviewCanvasHandle {

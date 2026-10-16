@@ -88,6 +88,7 @@ export default defineConfig({
     },
   },
   base: "./",
+  worker: { format: "es" },
   build: {
     assetsInlineLimit: (file) => (file.endsWith(".woff2") ? false : undefined),
     copyPublicDir: false,
