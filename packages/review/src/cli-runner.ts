@@ -377,9 +377,7 @@ export async function runReviewCli(input: ReviewCliInput): Promise<number> {
 
     process.once("SIGINT", stop);
     process.once("SIGTERM", stop);
-
-    if (DESKTOP_TAKEOVER_SIGNAL !== "SIGTERM")
-      process.once(DESKTOP_TAKEOVER_SIGNAL, takeover);
+    process.once(DESKTOP_TAKEOVER_SIGNAL, takeover);
 
     const { HeadlessServerBusyError, runHeadlessServer } =
       await import("./server/headless-host.js");
@@ -406,9 +404,7 @@ export async function runReviewCli(input: ReviewCliInput): Promise<number> {
     } finally {
       process.off("SIGINT", stop);
       process.off("SIGTERM", stop);
-
-      if (DESKTOP_TAKEOVER_SIGNAL !== "SIGTERM")
-        process.off(DESKTOP_TAKEOVER_SIGNAL, takeover);
+      process.off(DESKTOP_TAKEOVER_SIGNAL, takeover);
     }
   });
 

@@ -31,10 +31,8 @@ export function reviewServerDiscoveryPath(stateDir: string) {
   return path.join(stateDir, "review-server", "server.json");
 }
 
-/**
- * Sent by a Desktop taking over the server's state directory. Windows has no
- * SIGUSR2 (Node throws on it), and there SIGTERM ends the process outright.
- */
+/** Sent by a Desktop taking over the server's state directory. Windows has no
+ * SIGUSR2. */
 export const DESKTOP_TAKEOVER_SIGNAL: NodeJS.Signals =
   process.platform === "win32" ? "SIGTERM" : "SIGUSR2";
 
