@@ -9,7 +9,7 @@ import type {
   ReviewConnectResult,
 } from "@dev.fast/review-protocol";
 
-import { findExecutable } from "./ask/agents.js";
+import { executableCommand, findExecutable } from "./ask/agents.js";
 import {
   type McpLaunch,
   WHITEBOARD_PLUGIN as PLUGIN,
@@ -72,12 +72,18 @@ export type ConnectRun = (
   args: string[],
 ) => Promise<{ code: number; output: string }>;
 
-const runProcess: ConnectRun = (file, args) =>
+const runProcess: ConnectRun = (executable, executableArgs) =>
   new Promise((resolve) => {
+    const { file, args, windowsVerbatimArguments } = executableCommand(
+      executable,
+      executableArgs,
+    );
+
     execFile(
       file,
       args,
       {
+        windowsVerbatimArguments,
         timeout: STEP_TIMEOUT_MS,
         maxBuffer: 4 * 1024 * 1024,
         // A plugin install must never wait on a prompt nobody can see.
@@ -111,7 +117,6 @@ async function findHarness(
   harness: Harness,
   homeDir: string,
   env: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform,
 ): Promise<string | undefined> {
   const installed = (harness.installDirs ?? []).map((directory) =>
     path.join(homeDir, directory),
@@ -119,12 +124,8 @@ async function findHarness(
 
   for (const command of harness.commands) {
     const found =
-      (await findExecutable(command, env, platform)) ??
-      (await findExecutable(
-        command,
-        { PATH: installed.join(path.delimiter) },
-        platform,
-      ));
+      (await findExecutable(command, env)) ??
+      (await findExecutable(command, { PATH: installed.join(path.delimiter) }));
 
     if (found) return found;
   }
@@ -138,7 +139,7 @@ async function harnessFound(
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
 ): Promise<boolean> {
-  if (await findHarness(harness, homeDir, env, platform)) return true;
+  if (await findHarness(harness, homeDir, env)) return true;
 
   if (harness.homeDir && (await exists(path.join(homeDir, harness.homeDir))))
     return true;
@@ -412,12 +413,7 @@ export async function connectAgent(
 
   if (target === "cursor") return connectCursor(homeDir, launch, platform, run);
 
-  const executable = await findHarness(
-    HARNESSES[target],
-    homeDir,
-    env,
-    platform,
-  );
+  const executable = await findHarness(HARNESSES[target], homeDir, env);
 
   if (!executable)
     return {

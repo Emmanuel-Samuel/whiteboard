@@ -114,6 +114,7 @@ export const askAgents: Record<AskAgentId, AskAgentSpec> = {
   claude: {
     name: "Claude Code",
     commands: ["claude"],
+    installDirs: [".claude/local", ".local/bin"],
     launch: {
       adapter: "@agentclientprotocol/claude-agent-acp/dist/index.js",
       executableEnv: "CLAUDE_CODE_EXECUTABLE",
@@ -252,42 +253,8 @@ export type AskAgentLauncher = (
   },
 ) => Promise<AskAgentProcess>;
 
-/** An env var's value. Windows names ignore case, but a copy of
- * `process.env` is a plain object that keeps the case it was given. */
-function envValue(
-  env: NodeJS.ProcessEnv,
-  name: string,
-  platform: NodeJS.Platform,
-): string | undefined {
-  if (platform !== "win32") return env[name];
-  const key = Object.keys(env).find((k) => k.toUpperCase() === name);
-
-  return key === undefined ? undefined : env[key];
-}
-
-/** The names a command can go by in a directory. On Windows an executable
- * carries an extension (`claude.exe`) that the command leaves off. */
-function candidateNames(
-  command: string,
-  env: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform,
-): string[] {
-  if (platform !== "win32") return [command];
-
-  // `.cmd` and `.bat` are skipped: Node cannot spawn them without a shell.
-  const extensions = (envValue(env, "PATHEXT", platform) || ".COM;.EXE")
-    .split(";")
-    .filter((ext) => [".com", ".exe"].includes(ext.toLowerCase()));
-
-  // Both cases, so a case-sensitive file system finds what Windows would.
-  return [
-    command,
-    ...extensions.flatMap((ext) => [
-      command + ext.toLowerCase(),
-      command + ext,
-    ]),
-  ];
-}
+/** Windows can't run the extensionless sh shims npm puts beside `.cmd`s. */
+const WINDOWS_EXTENSIONS = [".exe", ".cmd"];
 
 /** Desktop inherits the login shell's PATH, so this sees what a terminal sees.
  * Package-manager bin directories are skipped: the adapters' own dependencies
@@ -297,13 +264,13 @@ export async function findExecutable(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
 ): Promise<string | undefined> {
-  const names = candidateNames(command, env, platform);
-  const separators = platform === "win32" ? /[\\/]/ : path.sep;
+  const names =
+    platform === "win32"
+      ? WINDOWS_EXTENSIONS.map((extension) => command + extension)
+      : [command];
 
-  for (const directory of (envValue(env, "PATH", platform) ?? "").split(
-    path.delimiter,
-  )) {
-    if (!directory || directory.split(separators).includes("node_modules"))
+  for (const directory of (env.PATH ?? "").split(path.delimiter)) {
+    if (!directory || directory.split(path.sep).includes("node_modules"))
       continue;
 
     for (const name of names) {
@@ -321,6 +288,20 @@ export async function findExecutable(
   }
 
   return undefined;
+}
+
+/** Windows runs a `.cmd` only through cmd.exe. */
+export function executableCommand(executable: string, args: string[]) {
+  if (process.platform !== "win32" || !/\.cmd$/i.test(executable))
+    return { file: executable, args, windowsVerbatimArguments: false };
+
+  const line = [executable, ...args].map((arg) => `"${arg}"`).join(" ");
+
+  return {
+    file: "cmd.exe",
+    args: ["/d", "/s", "/c", `"${line}"`],
+    windowsVerbatimArguments: true,
+  };
 }
 
 /** The user's install of an agent's CLI: on PATH, else where its installer
@@ -422,10 +403,13 @@ export const launchAskAgent: AskAgentLauncher = async (
     args = [createRequire(import.meta.url).resolve(launch.adapter)];
   } else args = launch.args;
 
-  const child = spawn(command, args, {
+  const start = executableCommand(command, args);
+
+  const child = spawn(start.file, start.args, {
     cwd,
     env,
     stdio: ["pipe", "pipe", "pipe"],
+    windowsVerbatimArguments: start.windowsVerbatimArguments,
   });
 
   let stderr = "";

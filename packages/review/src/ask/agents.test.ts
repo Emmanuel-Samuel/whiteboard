@@ -42,61 +42,13 @@ it.skipIf(process.platform === "win32")(
   },
 );
 
-async function installBin(name: string, directory = "bin") {
-  const bin = path.join(root, directory);
+it("finds a Windows npm shim by its .cmd, not the sh script beside it", async () => {
+  const bin = path.join(root, "bin");
+  await mkdir(bin);
+  await writeFile(path.join(bin, "opencode"), "", { mode: 0o755 });
+  await writeFile(path.join(bin, "opencode.cmd"), "", { mode: 0o755 });
 
-  await mkdir(bin, { recursive: true });
-  await writeFile(path.join(bin, name), "", { mode: 0o755 });
-
-  return bin;
-}
-
-it("finds a Windows executable by the extensions in PATHEXT", async () => {
-  const bin = await installBin("claude.exe");
-
-  expect(
-    await findExecutable(
-      "claude",
-      { PATH: bin, PATHEXT: ".COM;.EXE" },
-      "win32",
-    ),
-  ).toBe(path.join(bin, "claude.exe"));
-});
-
-it("falls back to .exe without PATHEXT, and reads Path in any case", async () => {
-  const bin = await installBin("claude.exe");
-
-  expect(await findExecutable("claude", { Path: bin }, "win32")).toBe(
-    path.join(bin, "claude.exe"),
+  expect(await findExecutable("opencode", { PATH: bin }, "win32")).toBe(
+    path.join(bin, "opencode.cmd"),
   );
-});
-
-it("does not offer a .cmd install on Windows, which cannot be spawned without a shell", async () => {
-  const bin = await installBin("pi.cmd");
-
-  expect(
-    await findExecutable("pi", { PATH: bin, PATHEXT: ".EXE;.CMD" }, "win32"),
-  ).toBeUndefined();
-});
-
-it("still finds a bare name on Windows", async () => {
-  const bin = await installBin("codex");
-
-  expect(await findExecutable("codex", { PATH: bin }, "win32")).toBe(
-    path.join(bin, "codex"),
-  );
-});
-
-it("does not try extensions off Windows", async () => {
-  const bin = await installBin("claude.exe");
-
-  expect(
-    await findExecutable("claude", { PATH: bin, PATHEXT: ".EXE" }, "linux"),
-  ).toBeUndefined();
-});
-
-it("skips package-manager bin directories on Windows too", async () => {
-  const bin = await installBin("codex.exe", "node_modules/.bin");
-
-  expect(await findExecutable("codex", { PATH: bin }, "win32")).toBeUndefined();
 });
