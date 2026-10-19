@@ -8,7 +8,11 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { isObjectValue } from "@dev.fast/json";
-import { withFileLock, writePrivateJsonAtomic } from "@dev.fast/trace-core";
+import {
+  processStartIdentity,
+  withFileLock,
+  writePrivateJsonAtomic,
+} from "@dev.fast/trace-core";
 import type { AskAgentLauncher } from "@review/ask/agents.js";
 import { cliAskTools } from "@review/ask/threads.js";
 import { desktopUsesHome } from "@review/desktop-discovery.js";
@@ -20,6 +24,7 @@ import {
   desktopOwnsHome,
   headlessServerLockPath,
   readReviewServerDiscovery,
+  readReviewServerHealth,
   reviewServerDiscoveryPath,
 } from "@review/server-discovery.js";
 
@@ -96,9 +101,10 @@ export function withHeadlessServerLock<T>(
 export async function takeOverServerHome<T>(
   home: string,
   start: () => Promise<T>,
+  { timeoutMs = 30_000 }: { timeoutMs?: number } = {},
 ): Promise<T> {
   const stateDir = await realpath(home);
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + timeoutMs;
 
   while (true) {
     const outcome = await withHeadlessServerLock(stateDir, start);
@@ -111,13 +117,31 @@ export async function takeOverServerHome<T>(
       () => null,
     );
 
-    if (owner !== undefined && discovery?.serverPid === owner)
-      await stopBackgroundServer(discovery, DESKTOP_TAKEOVER_SIGNAL);
-    else if (Date.now() > deadline)
-      throw new Error(
-        `Process ${owner} holds the Whiteboard server's lock in ${stateDir} without serving it.`,
-      );
-    else await delay(100);
+    // Signal only a process that answers as the recorded server: a reused pid
+    // belongs to something unrelated.
+    if (
+      owner !== undefined &&
+      discovery?.serverPid === owner &&
+      (await readReviewServerHealth(discovery))?.serverPid === owner
+    ) {
+      try {
+        await stopBackgroundServer(discovery, DESKTOP_TAKEOVER_SIGNAL);
+      } catch {
+        await delay(100);
+      }
+    } else if (Date.now() > deadline) {
+      // Nothing answers and its start time cannot prove it is the same
+      // process that took the lock (Windows has no `ps`), so the lock is stale.
+      if (owner !== undefined && processStartIdentity(owner) === null)
+        await rm(headlessServerLockPath(stateDir), {
+          recursive: true,
+          force: true,
+        });
+      else
+        throw new Error(
+          `Process ${owner} holds the Whiteboard server's lock in ${stateDir} without serving it.`,
+        );
+    } else await delay(100);
   }
 }
 
