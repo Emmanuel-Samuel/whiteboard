@@ -111,6 +111,7 @@ async function findHarness(
   harness: Harness,
   homeDir: string,
   env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
 ): Promise<string | undefined> {
   const installed = (harness.installDirs ?? []).map((directory) =>
     path.join(homeDir, directory),
@@ -118,8 +119,12 @@ async function findHarness(
 
   for (const command of harness.commands) {
     const found =
-      (await findExecutable(command, env)) ??
-      (await findExecutable(command, { PATH: installed.join(path.delimiter) }));
+      (await findExecutable(command, env, platform)) ??
+      (await findExecutable(
+        command,
+        { PATH: installed.join(path.delimiter) },
+        platform,
+      ));
 
     if (found) return found;
   }
@@ -133,7 +138,7 @@ async function harnessFound(
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
 ): Promise<boolean> {
-  if (await findHarness(harness, homeDir, env)) return true;
+  if (await findHarness(harness, homeDir, env, platform)) return true;
 
   if (harness.homeDir && (await exists(path.join(homeDir, harness.homeDir))))
     return true;
@@ -407,7 +412,12 @@ export async function connectAgent(
 
   if (target === "cursor") return connectCursor(homeDir, launch, platform, run);
 
-  const executable = await findHarness(HARNESSES[target], homeDir, env);
+  const executable = await findHarness(
+    HARNESSES[target],
+    homeDir,
+    env,
+    platform,
+  );
 
   if (!executable)
     return {

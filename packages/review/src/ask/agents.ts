@@ -252,25 +252,71 @@ export type AskAgentLauncher = (
   },
 ) => Promise<AskAgentProcess>;
 
+/** An env var's value. Windows names ignore case, but a copy of
+ * `process.env` is a plain object that keeps the case it was given. */
+function envValue(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  platform: NodeJS.Platform,
+): string | undefined {
+  if (platform !== "win32") return env[name];
+  const key = Object.keys(env).find((k) => k.toUpperCase() === name);
+
+  return key === undefined ? undefined : env[key];
+}
+
+/** The names a command can go by in a directory. On Windows an executable
+ * carries an extension (`claude.exe`) that the command leaves off. */
+function candidateNames(
+  command: string,
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): string[] {
+  if (platform !== "win32") return [command];
+
+  // `.cmd` and `.bat` are skipped: Node cannot spawn them without a shell.
+  const extensions = (envValue(env, "PATHEXT", platform) || ".COM;.EXE")
+    .split(";")
+    .filter((ext) => [".com", ".exe"].includes(ext.toLowerCase()));
+
+  // Both cases, so a case-sensitive file system finds what Windows would.
+  return [
+    command,
+    ...extensions.flatMap((ext) => [
+      command + ext.toLowerCase(),
+      command + ext,
+    ]),
+  ];
+}
+
 /** Desktop inherits the login shell's PATH, so this sees what a terminal sees.
  * Package-manager bin directories are skipped: the adapters' own dependencies
  * put `codex` there, and that is not the user's install. */
 export async function findExecutable(
   command: string,
   env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
 ): Promise<string | undefined> {
-  for (const directory of (env.PATH ?? "").split(path.delimiter)) {
-    if (!directory || directory.split(path.sep).includes("node_modules"))
+  const names = candidateNames(command, env, platform);
+  const separators = platform === "win32" ? /[\\/]/ : path.sep;
+
+  for (const directory of (envValue(env, "PATH", platform) ?? "").split(
+    path.delimiter,
+  )) {
+    if (!directory || directory.split(separators).includes("node_modules"))
       continue;
-    const candidate = path.join(directory, command);
 
-    try {
-      if (!(await stat(candidate)).isFile()) continue;
-      await access(candidate, constants.X_OK);
+    for (const name of names) {
+      const candidate = path.join(directory, name);
 
-      return candidate;
-    } catch {
-      /* Not in this directory. */
+      try {
+        if (!(await stat(candidate)).isFile()) continue;
+        await access(candidate, constants.X_OK);
+
+        return candidate;
+      } catch {
+        /* Not in this directory. */
+      }
     }
   }
 
